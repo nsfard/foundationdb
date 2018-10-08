@@ -416,6 +416,7 @@ configure_file(fdb.cluster.cmake ${CMAKE_CURRENT_BINARY_DIR}/fdb.cluster)
 # testing
 ################################################################################
 enable_testing()
+set(ENABLE_SERIALIZATION_TESTS OFF CAHE BOOL "Enable flatbuffer tests")
 
 ################################################################################
 # Directory structure
@@ -435,6 +436,9 @@ set(SEED "0x${SEED_}" CACHE STRING "Random seed for testing")
 ################################################################################
 
 include(CompileBoost)
+if(ENABLE_SERIALIZATION_TESTS)
+  include(CompileFlatBuffers)
+endif()
 add_subdirectory(flow)
 add_subdirectory(fdbrpc)
 add_subdirectory(fdbclient)

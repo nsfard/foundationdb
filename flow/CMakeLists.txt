@@ -62,6 +62,8 @@ set(FLOW_SRCS
   actorcompiler.h
   boost.cpp
   error_definitions.h
+  flat_buffers.cpp
+  flat_buffers.h
   flow.cpp
   flow.h
   genericactors.actor.cpp

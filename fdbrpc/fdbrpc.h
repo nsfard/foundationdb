@@ -398,4 +398,4 @@ void load(Ar& ar, RequestStream<T>& value) {
 }
 
 #endif
-#include "fdbrpc/genericactors.actor.g.h"
+#include "fdbrpc/genericactors.actor.h"

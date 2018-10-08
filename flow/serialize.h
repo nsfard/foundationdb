@@ -27,6 +27,7 @@
 #include "Error.h"
 #include "Arena.h"
 #include <algorithm>
+#include "flat_buffers.h"
 
 // Though similar, is_binary_serializable cannot be replaced by std::is_pod, as doing so would prefer
 // memcpy over a defined serialize() method on a POD struct.  As not all of our structs are packed,
