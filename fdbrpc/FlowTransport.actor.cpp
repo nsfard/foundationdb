@@ -264,7 +264,7 @@ struct Peer : NonCopyable {
 			pkt.canonicalRemoteIp = transport->localAddress.ip;
 		}
 		pkt.connectPacketLength = sizeof(pkt) - sizeof(pkt.connectPacketLength);
-		pkt.protocolVersion = currentProtocolVersion;
+		pkt.protocolVersion = g_network->protocolVersion();
 		pkt.connectionId = transport->transportId;
 
 		PacketBuffer* pb_first = new PacketBuffer;
@@ -463,7 +463,7 @@ struct Peer : NonCopyable {
 				}
 				IFailureMonitor::failureMonitor().notifyDisconnect(
 				    self->destination); //< Clients might send more packets in response, which needs to go out on the
-				                        //next connection
+				                        // next connection
 				if (e.code() == error_code_actor_cancelled) throw;
 				// Try to recover, even from serious errors, by retrying
 
@@ -680,9 +680,8 @@ ACTOR static Future<Void> connectionReader(TransportData* transport, Reference<I
 							connectionId = p->connectionId;
 						}
 
-						if ((p->protocolVersion & compatibleProtocolVersionMask) !=
-						    (currentProtocolVersion & compatibleProtocolVersionMask)) {
-							incompatibleProtocolVersionNewer = p->protocolVersion > currentProtocolVersion;
+						if (p->protocolVersion != oldProtocolVersion && p->protocolVersion != newProtocolVersion) {
+							incompatibleProtocolVersionNewer = p->protocolVersion > newProtocolVersion;
 							NetworkAddress addr = p->canonicalRemotePort
 							                          ? NetworkAddress(p->canonicalRemoteIp, p->canonicalRemotePort)
 							                          : conn->getPeerAddress();
@@ -693,9 +692,10 @@ ACTOR static Future<Void> connectionReader(TransportData* transport, Reference<I
 								    FLOW_KNOBS->CONNECTION_REJECTED_MESSAGE_DELAY) {
 									TraceEvent(SevWarn, "ConnectionRejected", conn->getDebugID())
 									    .detail("Reason", "IncompatibleProtocolVersion")
-									    .detail("LocalVersion", currentProtocolVersion)
+									    .detail("LocalVersion", g_network->protocolVersion())
 									    .detail("RejectedVersion", p->protocolVersion)
-									    .detail("VersionMask", compatibleProtocolVersionMask)
+									    .detail("OldVersion", oldProtocolVersion)
+									    .detail("NewVersion", newProtocolVersion)
 									    .detail("Peer", p->canonicalRemotePort ? NetworkAddress(p->canonicalRemoteIp,
 									                                                            p->canonicalRemotePort)
 									                                           : conn->getPeerAddress())
@@ -964,14 +964,14 @@ static PacketID sendPacket(TransportData* self, ISerializeSource const& what, co
 		TEST(true); // "Loopback" delivery
 		// SOMEDAY: Would it be better to avoid (de)serialization by doing this check in flow?
 
-		BinaryWriter wr(AssumeVersion(currentProtocolVersion));
+		BinaryWriter wr(AssumeVersion(g_network->protocolVersion()));
 		what.serializeBinaryWriter(wr);
 		Standalone<StringRef> copy = wr.toStringRef();
 #if VALGRIND
 		VALGRIND_CHECK_MEM_IS_DEFINED(copy.begin(), copy.size());
 #endif
 
-		deliver(self, destination, ArenaReader(copy.arena(), copy, AssumeVersion(currentProtocolVersion)), false);
+		deliver(self, destination, ArenaReader(copy.arena(), copy, AssumeVersion(g_network->protocolVersion())), false);
 
 		return (PacketID)NULL;
 	} else {
@@ -1000,8 +1000,9 @@ static PacketID sendPacket(TransportData* self, ISerializeSource const& what, co
 		int prevBytesWritten = pb->bytes_written;
 		PacketBuffer* checksumPb = pb;
 
-		PacketWriter wr(pb, rp,
-		                AssumeVersion(currentProtocolVersion)); // SOMEDAY: Can we downgrade to talk to older peers?
+		PacketWriter wr(
+		    pb, rp,
+		    AssumeVersion(g_network->protocolVersion())); // SOMEDAY: Can we downgrade to talk to older peers?
 
 		// Reserve some space for packet length and checksum, write them after serializing data
 		SplitBuffer packetInfoBuffer;

@@ -736,7 +736,7 @@ struct LogPushData : NonCopyable {
 		for (auto& log : logSystem->getLogSystemConfig().tLogs) {
 			if (log.isLocal) {
 				for (int i = 0; i < log.tLogs.size(); i++) {
-					messagesWriter.push_back(BinaryWriter(AssumeVersion(currentProtocolVersion)));
+					messagesWriter.push_back(BinaryWriter(AssumeVersion(g_network->protocolVersion())));
 				}
 			}
 		}

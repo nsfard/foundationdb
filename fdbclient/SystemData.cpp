@@ -202,7 +202,7 @@ const KeyRangeRef tagLocalityListKeys(LiteralStringRef("\xff/tagLocalityList/"),
 const KeyRef tagLocalityListPrefix = tagLocalityListKeys.begin;
 
 const Key tagLocalityListKeyFor(Optional<Value> dcID) {
-	BinaryWriter wr(AssumeVersion(currentProtocolVersion));
+	BinaryWriter wr(AssumeVersion(oldProtocolVersion));
 	wr.serializeBytes(tagLocalityListKeys.begin);
 	wr << dcID;
 	return wr.toStringRef();
@@ -215,7 +215,7 @@ const Value tagLocalityListValue(int8_t const& tagLocality) {
 }
 Optional<Value> decodeTagLocalityListKey(KeyRef const& key) {
 	Optional<Value> dcID;
-	BinaryReader rd(key.removePrefix(tagLocalityListKeys.begin), AssumeVersion(currentProtocolVersion));
+	BinaryReader rd(key.removePrefix(tagLocalityListKeys.begin), AssumeVersion(oldProtocolVersion));
 	rd >> dcID;
 	return dcID;
 }
@@ -231,7 +231,7 @@ const KeyRangeRef datacenterReplicasKeys(LiteralStringRef("\xff\x02/datacenterRe
 const KeyRef datacenterReplicasPrefix = datacenterReplicasKeys.begin;
 
 const Key datacenterReplicasKeyFor(Optional<Value> dcID) {
-	BinaryWriter wr(AssumeVersion(currentProtocolVersion));
+	BinaryWriter wr(AssumeVersion(oldProtocolVersion));
 	wr.serializeBytes(datacenterReplicasKeys.begin);
 	wr << dcID;
 	return wr.toStringRef();
@@ -244,7 +244,7 @@ const Value datacenterReplicasValue(int const& replicas) {
 }
 Optional<Value> decodeDatacenterReplicasKey(KeyRef const& key) {
 	Optional<Value> dcID;
-	BinaryReader rd(key.removePrefix(datacenterReplicasKeys.begin), AssumeVersion(currentProtocolVersion));
+	BinaryReader rd(key.removePrefix(datacenterReplicasKeys.begin), AssumeVersion(oldProtocolVersion));
 	rd >> dcID;
 	return dcID;
 }

@@ -27,6 +27,8 @@
 #include "versions.h"
 #endif
 
+#include <flow/actorcompiler.h>
+
 // Users of ThreadSafeTransaction might share Reference<ThreadSafe...> between different threads as long as they don't
 // call addRef (e.g. C API follows this). Therefore, it is unsafe to call (explicitly or implicitly) this->addRef in any
 // of these functions.
@@ -341,7 +343,7 @@ void ThreadSafeTransaction::reset() {
 extern const char* getHGVersion();
 
 ThreadSafeApi::ThreadSafeApi()
-  : apiVersion(-1), clientVersion(format("%s,%s,%llx", FDB_VT_VERSION, getHGVersion(), currentProtocolVersion)),
+  : apiVersion(-1), clientVersion(format("%s,%s,%llx", FDB_VT_VERSION, getHGVersion(), g_network->protocolVersion())),
     transportId(0) {}
 
 void ThreadSafeApi::selectApiVersion(int apiVersion) {
@@ -364,7 +366,7 @@ void ThreadSafeApi::setNetworkOption(FDBNetworkOptions::Option option, Optional<
 }
 
 void ThreadSafeApi::setupNetwork() {
-	::setupNetwork(transportId);
+	::setupNetworkUsingOptions(transportId, false);
 }
 
 void ThreadSafeApi::runNetwork() {

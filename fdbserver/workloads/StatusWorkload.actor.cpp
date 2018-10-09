@@ -260,7 +260,7 @@ struct StatusWorkload : TestWorkload {
 				state double issued = now();
 				StatusObject result = wait(StatusClient::statusFetcher(connFile));
 				++self->replies;
-				BinaryWriter br(AssumeVersion(currentProtocolVersion));
+				BinaryWriter br(AssumeVersion(oldProtocolVersion));
 				save(br, result);
 				self->totalSize += br.getLength();
 				TraceEvent("StatusWorkloadReply")

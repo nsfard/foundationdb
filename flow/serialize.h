@@ -190,14 +190,13 @@ static inline bool valgrindCheck(const void* data, int bytes, const char* contex
 }
 #endif
 
-extern const uint64_t currentProtocolVersion;
-extern const uint64_t minValidProtocolVersion;
-extern const uint64_t compatibleProtocolVersionMask;
+extern const uint64_t oldProtocolVersion;
+extern const uint64_t newProtocolVersion;
 
 struct _IncludeVersion {
 	uint64_t v;
 	explicit _IncludeVersion(uint64_t defaultVersion) : v(defaultVersion) {
-		ASSERT(defaultVersion >= minValidProtocolVersion);
+		ASSERT(defaultVersion >= oldProtocolVersion);
 	}
 	template <class Ar>
 	void write(Ar& ar) {
@@ -207,12 +206,12 @@ struct _IncludeVersion {
 	template <class Ar>
 	void read(Ar& ar) {
 		ar >> v;
-		if (v < minValidProtocolVersion) {
+		if (v < oldProtocolVersion) {
 			auto err = incompatible_protocol_version();
 			TraceEvent(SevError, "InvalidSerializationVersion").error(err).detailf("Version", "%llx", v);
 			throw err;
 		}
-		if (v > currentProtocolVersion) {
+		if (v > oldProtocolVersion) {
 			// For now, no forward compatibility whatsoever is supported.  In the future, this check may be weakened for
 			// particular data structures (e.g. to support mismatches between client and server versions when the client
 			// must deserialize zookeeper and database structures)
@@ -225,7 +224,7 @@ struct _IncludeVersion {
 };
 struct _AssumeVersion {
 	uint64_t v;
-	explicit _AssumeVersion(uint64_t version) : v(version) { ASSERT(version >= minValidProtocolVersion); }
+	explicit _AssumeVersion(uint64_t version) : v(version) { ASSERT(version >= oldProtocolVersion); }
 	template <class Ar>
 	void write(Ar& ar) {
 		ar.setProtocolVersion(v);
@@ -246,8 +245,10 @@ struct _Unversioned {
 	}
 };
 
+extern uint64_t getProtocolVersion();
+
 // These functions return valid options to the VersionOptions parameter of the constructor of each archive type
-inline _IncludeVersion IncludeVersion(uint64_t defaultVersion = currentProtocolVersion) {
+inline _IncludeVersion IncludeVersion(uint64_t defaultVersion = getProtocolVersion()) {
 	return _IncludeVersion(defaultVersion);
 }
 inline _AssumeVersion AssumeVersion(uint64_t version) {

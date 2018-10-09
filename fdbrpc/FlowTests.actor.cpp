@@ -163,6 +163,8 @@ struct YieldMockNetwork : INetwork, ReferenceCounted<YieldMockNetwork> {
 	int nextYield;
 	INetwork* baseNetwork;
 
+	virtual uint64_t protocolVersion() const { return baseNetwork->protocolVersion(); }
+
 	virtual flowGlobalType global(int id) { return baseNetwork->global(id); }
 	virtual void setGlobal(size_t id, flowGlobalType v) {
 		baseNetwork->setGlobal(id, v);

@@ -52,6 +52,7 @@ public:
 		const char* name;
 		const char* coordinationFolder;
 		const char* dataFolder;
+		const uint64_t protocolVersion;
 		MachineInfo* machine;
 		NetworkAddress address;
 		LocalityData locality;
@@ -70,12 +71,13 @@ public:
 		uint64_t fault_injection_r;
 		double fault_injection_p1, fault_injection_p2;
 
-		ProcessInfo(const char* name, LocalityData locality, ProcessClass startingClass, NetworkAddress address,
-		            INetworkConnections* net, const char* dataFolder, const char* coordinationFolder)
-		  : name(name), locality(locality), startingClass(startingClass), address(address), dataFolder(dataFolder),
-		    network(net), coordinationFolder(coordinationFolder), failed(false), excluded(false), cpuTicks(0),
-		    rebooting(false), fault_injection_p1(0), fault_injection_p2(0), fault_injection_r(0), machine(0),
-		    cleared(false) {}
+		ProcessInfo(const char* name, uint64_t protocolVersion, LocalityData locality, ProcessClass startingClass,
+		            NetworkAddress address, INetworkConnections* net, const char* dataFolder,
+		            const char* coordinationFolder)
+		  : name(name), protocolVersion(protocolVersion), locality(locality), startingClass(startingClass),
+		    address(address), dataFolder(dataFolder), network(net), coordinationFolder(coordinationFolder),
+		    failed(false), excluded(false), cpuTicks(0), rebooting(false), fault_injection_p1(0), fault_injection_p2(0),
+		    fault_injection_r(0), machine(0), cleared(false) {}
 
 		Future<KillType> onShutdown() { return shutdownSignal.getFuture(); }
 
@@ -145,12 +147,13 @@ public:
 	};
 
 	template <class Func>
-	ProcessInfo* asNewProcess(const char* name, uint32_t ip, uint16_t port, LocalityData locality,
-	                          ProcessClass startingClass, Func func, const char* dataFolder,
+	ProcessInfo* asNewProcess(const char* name, uint64_t protocolVersion, uint32_t ip, uint16_t port,
+	                          LocalityData locality, ProcessClass startingClass, Func func, const char* dataFolder,
 	                          const char* coordinationFolder) {
-		ProcessInfo* m = newProcess(name, ip, port, locality, startingClass, dataFolder, coordinationFolder);
+		ProcessInfo* m =
+		    newProcess(name, protocolVersion, ip, port, locality, startingClass, dataFolder, coordinationFolder);
 		//		ProcessInfo* m = newProcess(name, ip, port, zoneId, machineId, dcId, startingClass, dataFolder,
-		//coordinationFolder);
+		// coordinationFolder);
 		std::swap(m, currentProcess);
 		try {
 			func();
@@ -170,8 +173,8 @@ public:
 	virtual Future<Void> onProcess(ISimulator::ProcessInfo* process, int taskID = -1) = 0;
 	virtual Future<Void> onMachine(ISimulator::ProcessInfo* process, int taskID = -1) = 0;
 
-	virtual ProcessInfo* newProcess(const char* name, uint32_t ip, uint16_t port, LocalityData locality,
-	                                ProcessClass startingClass, const char* dataFolder,
+	virtual ProcessInfo* newProcess(const char* name, uint64_t protocolVersion, uint32_t ip, uint16_t port,
+	                                LocalityData locality, ProcessClass startingClass, const char* dataFolder,
 	                                const char* coordinationFolder) = 0;
 	virtual void killProcess(ProcessInfo* machine, KillType) = 0;
 	virtual void rebootProcess(Optional<Standalone<StringRef>> zoneId, bool allProcesses) = 0;

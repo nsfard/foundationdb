@@ -610,7 +610,7 @@ void showArena(ArenaBlock* a, ArenaBlock* parent) {
 }
 
 void arenaTest() {
-	BinaryWriter wr(AssumeVersion(currentProtocolVersion));
+	BinaryWriter wr(AssumeVersion(g_network->protocolVersion()));
 	{
 		Arena arena;
 		VectorRef<StringRef> test;
@@ -627,7 +627,7 @@ void arenaTest() {
 	{
 		Arena arena2;
 		VectorRef<StringRef> test2;
-		BinaryReader reader(wr.getData(), wr.getLength(), AssumeVersion(currentProtocolVersion));
+		BinaryReader reader(wr.getData(), wr.getLength(), AssumeVersion(g_network->protocolVersion()));
 		reader >> test2 >> arena2;
 
 		for (auto i = test2.begin(); i != test2.end(); ++i)
@@ -1022,7 +1022,7 @@ ACTOR void cycle(FutureStream<Void> in, PromiseStream<Void> out, int* ptotal) {
 	loop {
 		waitNext(in);
 		(*ptotal)++;
-		out.send(_);
+		out.send(Void());
 	}
 }
 

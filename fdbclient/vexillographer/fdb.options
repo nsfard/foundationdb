@@ -115,6 +115,9 @@ description is not currently required but encouraged.
             description="This option tells a child on a multiversion client what transport ID to use."
             paramType="Int" paramDescription="Transport ID for the child connection"
             hidden="true" />
+    <Option name="new_protocol" code="2000"
+            description="If set to on, the client will use the flatbuffers based protocol"
+            paramType="Int"/>
   </Scope>
 
   <Scope name="DatabaseOption">

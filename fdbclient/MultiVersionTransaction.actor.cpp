@@ -1443,8 +1443,8 @@ bool ClientInfo::canReplace(Reference<ClientInfo> other) const {
 		return true;
 	}
 
-	return (protocolVersion & compatibleProtocolVersionMask) !=
-	       (other->protocolVersion & compatibleProtocolVersionMask);
+	return (protocolVersion == oldProtocolVersion || protocolVersion == newProtocolVersion) &&
+	       (other->protocolVersion == oldProtocolVersion || other->protocolVersion == newProtocolVersion);
 }
 
 // UNIT TESTS

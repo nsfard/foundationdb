@@ -896,12 +896,31 @@ void setNetworkOption(FDBNetworkOptions::Option option, Optional<StringRef> valu
 		validateOptionValue(value, false);
 		networkOptions.slowTaskProfilingEnabled = true;
 		break;
+	case FDBNetworkOptions::NEW_PROTOCOL: {
+		bool newProtocol;
+		std::string arg;
+		if (value.present()) {
+			arg = value.get().toString();
+		} else {
+			arg = "on";
+		}
+		std::transform(arg.begin(), arg.end(), arg.begin(), [](char c) { return char(std::tolower(c)); });
+		if (arg == "on" || arg == "true" || arg == "1") {
+			newProtocol = true;
+		} else if (arg == "off" || arg == "false" || arg == "0") {
+			newProtocol = false;
+		} else {
+			throw invalid_option_value();
+		}
+		networkOptions.useNewProtocol = newProtocol;
+		break;
+	}
 	default:
 		break;
 	}
 }
 
-void setupNetwork(uint64_t transportId, bool useMetrics) {
+void setupNetwork(uint64_t protocolVersion, uint64_t transportId, bool useMetrics) {
 	if (g_network) throw network_already_setup();
 
 	g_random = new DeterministicRandom(platform::getRandomSeed());
@@ -910,7 +929,8 @@ void setupNetwork(uint64_t transportId, bool useMetrics) {
 	g_debug_random = trace_random;
 	if (!networkOptions.logClientInfo.present()) networkOptions.logClientInfo = true;
 
-	g_network = newNet2(NetworkAddress(), false, useMetrics || networkOptions.traceDirectory.present());
+	g_network =
+	    newNet2(NetworkAddress(), protocolVersion, false, useMetrics || networkOptions.traceDirectory.present());
 	FlowTransport::createInstance(transportId);
 	Net2FileSystem::newFileSystem();
 
@@ -919,6 +939,10 @@ void setupNetwork(uint64_t transportId, bool useMetrics) {
 #ifndef TLS_DISABLED
 	tlsOptions->register_network();
 #endif
+}
+
+void setupNetworkUsingOptions(uint64_t transportId, bool useMetrics) {
+	setupNetwork(networkOptions.useNewProtocol ? newProtocolVersion : oldProtocolVersion, transportId, useMetrics);
 }
 
 void runNetwork() {
@@ -1323,15 +1347,16 @@ ACTOR Future<Key> getKey(Database cx, KeySelector k, Future<Version> version, Tr
 				g_traceBatch.addEvent(
 				    "TransactionDebug", info.debugID.get().first(),
 				    "NativeAPI.getKey.Before"); //.detail("StartKey",
-				                                //printable(k.getKey())).detail("Offset",k.offset).detail("OrEqual",k.orEqual);
+				                                // printable(k.getKey())).detail("Offset",k.offset).detail("OrEqual",k.orEqual);
 			++cx->transactionPhysicalReads;
 			GetKeyReply reply = wait(loadBalance(ssi.second, &StorageServerInterface::getKey,
 			                                     GetKeyRequest(k, version.get()), TaskDefaultPromiseEndpoint, false,
 			                                     cx->enableLocalityLoadBalance ? &cx->queueModel : NULL));
 			if (info.debugID.present())
-				g_traceBatch.addEvent("TransactionDebug", info.debugID.get().first(),
-				                      "NativeAPI.getKey.After"); //.detail("NextKey",printable(reply.sel.key)).detail("Offset",
-				                                                 //reply.sel.offset).detail("OrEqual", k.orEqual);
+				g_traceBatch.addEvent(
+				    "TransactionDebug", info.debugID.get().first(),
+				    "NativeAPI.getKey.After"); //.detail("NextKey",printable(reply.sel.key)).detail("Offset",
+				                               // reply.sel.offset).detail("OrEqual", k.orEqual);
 			k = reply.sel;
 			if (!k.offset && k.orEqual) {
 				return k.getKey();

@@ -194,7 +194,7 @@ typedef NetworkAddress (*NetworkAddressFuncPtr)();
 
 class INetwork;
 extern INetwork* g_network;
-extern INetwork* newNet2(NetworkAddress localAddress, bool useThreadPool = false, bool useMetrics = false);
+extern INetwork* newNet2(NetworkAddress localAddress, uint64_t protocolVersion, bool useThreadPool, bool useMetrics);
 
 class INetwork {
 public:
@@ -215,6 +215,8 @@ public:
 		enASIOTimedOut = 9,
 		enBlobCredentialFiles = 10
 	};
+
+	virtual uint64_t protocolVersion() const = 0;
 
 	virtual void longTaskCheck(const char* name) {}
 

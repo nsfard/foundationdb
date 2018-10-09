@@ -52,6 +52,7 @@ struct NetworkOptions {
 	Optional<bool> logClientInfo;
 	Standalone<VectorRef<ClientVersionRef>> supportedVersions;
 	bool slowTaskProfilingEnabled;
+	bool useNewProtocol = false;
 
 	// The default values, TRACE_DEFAULT_ROLL_SIZE and TRACE_DEFAULT_MAX_LOGS_SIZE are located in Trace.h.
 	NetworkOptions()
@@ -81,7 +82,8 @@ private:
 void setNetworkOption(FDBNetworkOptions::Option option, Optional<StringRef> value = Optional<StringRef>());
 
 // Configures the global networking machinery
-void setupNetwork(uint64_t transportId = 0, bool useMetrics = false);
+void setupNetwork(uint64_t protocolVersion, uint64_t transportId, bool useMetrics);
+void setupNetworkUsingOptions(uint64_t transportId, bool useMetrics);
 
 // This call blocks while the network is running.  To use the API in a single-threaded
 //  environment, the calling program must have ACTORs already launched that are waiting

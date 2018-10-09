@@ -155,7 +155,7 @@ struct StorefrontWorkload : TestWorkload {
 						updaters.clear();
 
 						// set value for the order
-						BinaryWriter wr(AssumeVersion(currentProtocolVersion));
+						BinaryWriter wr(AssumeVersion(oldProtocolVersion));
 						wr << itemList;
 						tr.set(orderKey, wr.toStringRef());
 
@@ -187,7 +187,7 @@ struct StorefrontWorkload : TestWorkload {
 			int orderIdx;
 			for (orderIdx = 0; orderIdx < values.size(); orderIdx++) {
 				vector<int> saved;
-				BinaryReader br(values[orderIdx].value, AssumeVersion(currentProtocolVersion));
+				BinaryReader br(values[orderIdx].value, AssumeVersion(oldProtocolVersion));
 				br >> saved;
 				for (int c = 0; c < saved.size(); c++) result[saved[c]]++;
 			}
@@ -247,7 +247,7 @@ struct StorefrontWorkload : TestWorkload {
 					for (it = self->orders[id].begin(); it != self->orders[id].end(); it++) {
 						for (int i = 0; i < it->second; i++) itemList.push_back(it->first);
 					}
-					BinaryWriter wr(AssumeVersion(currentProtocolVersion));
+					BinaryWriter wr(AssumeVersion(oldProtocolVersion));
 					wr << itemList;
 					if (wr.toStringRef() != val.get().toString()) {
 						TraceEvent(SevError, "TestFailure")
