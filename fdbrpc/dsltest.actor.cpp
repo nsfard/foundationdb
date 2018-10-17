@@ -611,6 +611,7 @@ void showArena(ArenaBlock* a, ArenaBlock* parent) {
 
 void arenaTest() {
 	BinaryWriter wr(AssumeVersion(g_network->protocolVersion()));
+	constexpr flat_buffers::FileIdentifier test2_identifier = 6770515;
 	{
 		Arena arena;
 		VectorRef<StringRef> test;
@@ -622,13 +623,13 @@ void arenaTest() {
 			for (auto j = i->begin(); j != i->end(); ++j) cout << *j;
 		cout << endl;
 
-		wr << test;
+		serialize_fake_root(wr, test2_identifier, test);
 	}
 	{
 		Arena arena2;
 		VectorRef<StringRef> test2;
 		BinaryReader reader(wr.getData(), wr.getLength(), AssumeVersion(g_network->protocolVersion()));
-		reader >> test2 >> arena2;
+		serialize_fake_root(reader, test2_identifier, test2, arena2);
 
 		for (auto i = test2.begin(); i != test2.end(); ++i)
 			for (auto j = i->begin(); j != i->end(); ++j) cout << *j;

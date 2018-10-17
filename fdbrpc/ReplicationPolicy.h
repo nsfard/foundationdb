@@ -25,9 +25,95 @@
 #include "flow/flow.h"
 #include "ReplicationTypes.h"
 
+#include <boost/variant.hpp>
+
+namespace flat_buffers {
+
+template <class... Alternatives>
+struct union_like_traits<boost::variant<Alternatives...>> : std::true_type {
+	using Member = boost::variant<Alternatives...>;
+	using alternatives = pack<Alternatives...>;
+	static uint8_t index(const Member& variant) { return variant.which(); }
+	static bool empty(const Member& variant) { return false; }
+
+	template <int i>
+	static const index_t<i, alternatives>& get(const Member& variant) {
+		return boost::get<index_t<i, alternatives>>(variant);
+	}
+
+	template <size_t i, class Alternative>
+	static const void assign(Member& member, const Alternative& a) {
+		static_assert(std::is_same_v<index_t<i, alternatives>, Alternative>);
+		member = a;
+	}
+};
+
+} // namespace flat_buffers
+
 template <class Ar>
 void serializeReplicationPolicy(Ar& ar, IRepPolicyRef& policy);
 extern void testReplicationPolicy(int nTests);
+
+struct SerializablePolicy;
+
+struct SPolicyOne {
+	template <class Archiver>
+	void serialize(Archiver&) {}
+};
+
+struct SPolicyAcross {
+	int count;
+	std::string attribKey;
+	std::unique_ptr<SerializablePolicy> policy;
+
+	template <class Archiver>
+	void serialize(Archiver& ar) {
+		serializer(ar, attribKey, count, *policy);
+	}
+};
+
+struct SPolicyAnd {
+	std::vector<std::unique_ptr<SerializablePolicy>> policies;
+
+	template <class Archiver>
+	void serialize(Archiver& ar) {
+		serializer(ar, policies);
+	}
+};
+
+struct SerializablePolicy {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 9187331;
+
+	SerializablePolicy();
+
+	IRepPolicyRef toPolicy() const;
+
+	boost::variant<Void, SPolicyOne, SPolicyAcross, SPolicyAnd> policy;
+	template <class Archiver>
+	void serialize(Archiver& ar) {
+		serializer(ar, policy);
+	}
+};
+
+namespace flat_buffers {
+
+// unique_ptr is usually a union-like type. However, we know that this is always non-null for policies and vector-like
+// does not support a union like type
+template <>
+struct serializable_traits<std::unique_ptr<SerializablePolicy>> : std::true_type {
+	using type = std::unique_ptr<SerializablePolicy>;
+	template <class Archiver>
+	static void serialize(Archiver& ar, type& p) {
+		if constexpr (Archiver::isDeserializing) {
+			p = std::make_unique<SerializablePolicy>();
+			::serializer(ar, *p);
+		} else {
+			::serializer(ar, p ? *p : std::declval<SerializablePolicy>());
+		}
+	}
+};
+
+} // namespace flat_buffers
 
 struct IReplicationPolicy : public ReferenceCounted<IReplicationPolicy> {
 	IReplicationPolicy() {}
@@ -65,6 +151,8 @@ struct IReplicationPolicy : public ReferenceCounted<IReplicationPolicy> {
 		return keys;
 	}
 	virtual void attributeKeys(std::set<std::string>*) const = 0;
+
+	virtual SerializablePolicy toSerializable() const = 0;
 };
 
 template <class Archive>
@@ -89,6 +177,7 @@ inline void save(Archive& ar, const IRepPolicyRef& value) {
 
 struct PolicyOne : IReplicationPolicy, public ReferenceCounted<PolicyOne> {
 	PolicyOne(){};
+	PolicyOne(const SPolicyOne&) {}
 	virtual ~PolicyOne(){};
 	virtual std::string name() const { return "One"; }
 	virtual std::string info() const { return "1"; }
@@ -100,10 +189,12 @@ struct PolicyOne : IReplicationPolicy, public ReferenceCounted<PolicyOne> {
 	template <class Ar>
 	void serialize(Ar& ar) {}
 	virtual void attributeKeys(std::set<std::string>* set) const override { return; }
+	virtual SerializablePolicy toSerializable() const;
 };
 
 struct PolicyAcross : IReplicationPolicy, public ReferenceCounted<PolicyAcross> {
 	PolicyAcross(int count, std::string const& attribKey, IRepPolicyRef const policy);
+	PolicyAcross(const SPolicyAcross& serialized);
 	virtual ~PolicyAcross();
 	virtual std::string name() const { return "Across"; }
 	virtual std::string info() const { return format("%s^%d x ", _attribKey.c_str(), _count) + _policy->info(); }
@@ -115,7 +206,7 @@ struct PolicyAcross : IReplicationPolicy, public ReferenceCounted<PolicyAcross> 
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& _attribKey& _count;
+		old_serializer(ar, _attribKey, _count);
 		serializeReplicationPolicy(ar, _policy);
 	}
 
@@ -127,6 +218,8 @@ struct PolicyAcross : IReplicationPolicy, public ReferenceCounted<PolicyAcross> 
 		set->insert(_attribKey);
 		_policy->attributeKeys(set);
 	}
+
+	virtual SerializablePolicy toSerializable() const;
 
 protected:
 	int _count;
@@ -146,6 +239,7 @@ struct PolicyAnd : IReplicationPolicy, public ReferenceCounted<PolicyAnd> {
 		// Sort the policy array
 		std::sort(_sortedPolicies.begin(), _sortedPolicies.end(), PolicyAnd::comparePolicy);
 	}
+	PolicyAnd(const SPolicyAnd& serialized);
 	virtual ~PolicyAnd() {}
 	virtual std::string name() const { return "And"; }
 	virtual std::string info() const {
@@ -186,7 +280,7 @@ struct PolicyAnd : IReplicationPolicy, public ReferenceCounted<PolicyAnd> {
 	template <class Ar>
 	void serialize(Ar& ar) {
 		int count = _policies.size();
-		ar& count;
+		old_serializer(ar, count);
 		_policies.resize(count);
 		for (int i = 0; i < count; i++) {
 			serializeReplicationPolicy(ar, _policies[i]);
@@ -203,6 +297,8 @@ struct PolicyAnd : IReplicationPolicy, public ReferenceCounted<PolicyAnd> {
 		}
 	}
 
+	virtual SerializablePolicy toSerializable() const;
+
 protected:
 	std::vector<IRepPolicyRef> _policies;
 	std::vector<IRepPolicyRef> _sortedPolicies;
@@ -212,40 +308,51 @@ extern int testReplication();
 
 template <class Ar>
 void serializeReplicationPolicy(Ar& ar, IRepPolicyRef& policy) {
-	if (Ar::isDeserializing) {
-		StringRef name;
-		ar& name;
+	if (ar.protocolVersion() < oldProtocolVersion) {
+		if (Ar::isDeserializing) {
+			StringRef name;
+			old_serializer(ar, name);
 
-		if (name == LiteralStringRef("One")) {
-			PolicyOne* pointer = new PolicyOne();
-			pointer->serialize(ar);
-			policy = IRepPolicyRef(pointer);
-		} else if (name == LiteralStringRef("Across")) {
-			PolicyAcross* pointer = new PolicyAcross(0, "", IRepPolicyRef());
-			pointer->serialize(ar);
-			policy = IRepPolicyRef(pointer);
-		} else if (name == LiteralStringRef("And")) {
-			PolicyAnd* pointer = new PolicyAnd({});
-			pointer->serialize(ar);
-			policy = IRepPolicyRef(pointer);
-		} else if (name == LiteralStringRef("None")) {
-			policy = IRepPolicyRef();
+			if (name == LiteralStringRef("One")) {
+				PolicyOne* pointer = new PolicyOne();
+				pointer->serialize(ar);
+				policy = IRepPolicyRef(pointer);
+			} else if (name == LiteralStringRef("Across")) {
+				PolicyAcross* pointer = new PolicyAcross(0, "", IRepPolicyRef());
+				pointer->serialize(ar);
+				policy = IRepPolicyRef(pointer);
+			} else if (name == LiteralStringRef("And")) {
+				PolicyAnd* pointer = new PolicyAnd(std::vector<IRepPolicyRef>{});
+				pointer->serialize(ar);
+				policy = IRepPolicyRef(pointer);
+			} else if (name == LiteralStringRef("None")) {
+				policy = IRepPolicyRef();
+			} else {
+				TraceEvent(SevError, "SerializingInvalidPolicyType").detailext("PolicyName", name);
+			}
 		} else {
-			TraceEvent(SevError, "SerializingInvalidPolicyType").detailext("PolicyName", name);
+			std::string name = policy ? policy->name() : "None";
+			Standalone<StringRef> nameRef = StringRef(name);
+			old_serializer(ar, nameRef);
+			if (name == "One") {
+				dynamic_cast<PolicyOne*>(policy.getPtr())->serialize(ar);
+			} else if (name == "Across") {
+				dynamic_cast<PolicyAcross*>(policy.getPtr())->serialize(ar);
+			} else if (name == "And") {
+				dynamic_cast<PolicyAnd*>(policy.getPtr())->serialize(ar);
+			} else if (name == "None") {
+			} else {
+				TraceEvent(SevError, "SerializingInvalidPolicyType").detail("PolicyName", name);
+			}
 		}
 	} else {
-		std::string name = policy ? policy->name() : "None";
-		Standalone<StringRef> nameRef = StringRef(name);
-		ar& nameRef;
-		if (name == "One") {
-			((PolicyOne*)policy.getPtr())->serialize(ar);
-		} else if (name == "Across") {
-			((PolicyAcross*)policy.getPtr())->serialize(ar);
-		} else if (name == "And") {
-			((PolicyAnd*)policy.getPtr())->serialize(ar);
-		} else if (name == "None") {
+		if (Ar::isDeserializing) {
+			SerializablePolicy result;
+			new_serializer(ar, result);
+			policy = result.toPolicy();
 		} else {
-			TraceEvent(SevError, "SerializingInvalidPolicyType").detail("PolicyName", name);
+			auto sPolicy = policy ? policy->toSerializable() : SerializablePolicy();
+			new_serializer(ar, sPolicy);
 		}
 	}
 }

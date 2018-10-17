@@ -215,7 +215,7 @@ struct MetricData {
 	BinaryWriter writer;
 
 	explicit MetricData(uint64_t appendStart = 0)
-	  : writer(AssumeVersion(g_network->protocolVersion())), start(0), rollTime(std::numeric_limits<uint64_t>::max()),
+	  : writer(AssumeVersion(oldProtocolVersion)), start(0), rollTime(std::numeric_limits<uint64_t>::max()),
 	    appendStart(appendStart) {}
 
 	MetricData(MetricData&& r) noexcept(true)
@@ -344,9 +344,8 @@ struct FieldHeader {
 	}
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& version;
+		serializer(ar, version, count, sum);
 		ASSERT(version == 1);
-		ar& count& sum;
 	}
 };
 
@@ -367,12 +366,12 @@ template <typename T>
 struct FieldValueBlockEncoding {
 	FieldValueBlockEncoding() : prev(0) {}
 	inline void write(BinaryWriter& w, T v) {
-		w << CompressedInt<T>(v - prev);
+		old_serializer(w, CompressedInt<T>(v - prev));
 		prev = v;
 	}
 	T read(BinaryReader& r) {
 		CompressedInt<T> v;
-		r >> v;
+		old_serializer(r, v);
 		prev += v.value;
 		return prev;
 	}
@@ -381,10 +380,10 @@ struct FieldValueBlockEncoding {
 
 template <>
 struct FieldValueBlockEncoding<double> {
-	inline void write(BinaryWriter& w, double v) { w << v; }
+	inline void write(BinaryWriter& w, double v) { old_serializer(w, v); }
 	double read(BinaryReader& r) {
 		double v;
-		r >> v;
+		old_serializer(r, v);
 		return v;
 	}
 };
@@ -407,14 +406,14 @@ struct FieldValueBlockEncoding<Standalone<StringRef>> {
 		int reuse = 0;
 		int stop = std::min(v.size(), prev.size());
 		while (reuse < stop && v[reuse] == prev[reuse]) ++reuse;
-		w << CompressedInt<int>(reuse) << CompressedInt<int>(v.size() - reuse);
+		old_serializer(w, CompressedInt<int>(reuse), CompressedInt<int>(v.size() - reuse));
 		if (v.size() > reuse) w.serializeBytes(v.substr(reuse));
 		prev = v;
 	}
 	Standalone<StringRef> read(BinaryReader& r) {
 		CompressedInt<int> reuse;
 		CompressedInt<int> extra;
-		r >> reuse >> extra;
+		old_serializer(r, reuse, extra);
 		ASSERT(reuse.value >= 0 && extra.value >= 0 && reuse.value <= prev.size());
 		Standalone<StringRef> v = makeString(reuse.value + extra.value);
 		memcpy(mutateString(v), prev.begin(), reuse.value);
@@ -443,7 +442,7 @@ struct FieldLevel {
 
 	explicit FieldLevel() : appendUsed(0) {
 		metrics.emplace_back(MetricData());
-		metrics.back().writer << header;
+		old_serializer(metrics.back().writer, header);
 	}
 
 	FieldLevel(FieldLevel&& f)
@@ -472,14 +471,14 @@ struct FieldLevel {
 		// one
 		if (m.appendStart != 0 && m.writer.getLength() == 0) {
 			m.appendStart = 0;
-			m.writer << header;
+			old_serializer(m.writer, header);
 			enc = Encoder();
 			return;
 		}
 
 		metrics.back().rollTime = t;
 		metrics.emplace_back(MetricData());
-		metrics.back().writer << header;
+		old_serializer(metrics.back().writer, header);
 		enc = Encoder();
 		appendUsed = 0;
 	}
@@ -499,9 +498,9 @@ struct FieldLevel {
 
 	// Calculate header as of the end of a value block
 	static Header calculateHeader(StringRef block) {
-		BinaryReader r(block, AssumeVersion(g_network->protocolVersion()));
+		BinaryReader r(block, AssumeVersion(oldProtocolVersion));
 		Header h;
-		r >> h;
+		old_serializer(r, h);
 		Encoder dec;
 		while (!r.empty()) {
 			T v = dec.read(r);
@@ -512,12 +511,12 @@ struct FieldLevel {
 
 	// Read header at position, update it with previousHeader, overwrite old header with new header.
 	static void updateSerializedHeader(StringRef buf, const Header& patch) {
-		BinaryReader r(buf, AssumeVersion(g_network->protocolVersion()));
+		BinaryReader r(buf, AssumeVersion(oldProtocolVersion));
 		Header h;
-		r >> h;
+		old_serializer(r, h);
 		h.update(patch);
-		OverWriter w(mutateString(buf), buf.size(), AssumeVersion(g_network->protocolVersion()));
-		w << h;
+		OverWriter w(mutateString(buf), buf.size(), AssumeVersion(oldProtocolVersion));
+		old_serializer(w, h);
 	}
 
 	// Flushes data blocks in metrics to batch, optionally patching headers if a header is given
@@ -1091,9 +1090,8 @@ struct FieldHeader<TimeAndValue<T>> {
 	}
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& version;
+		serializer(ar, version, count, area);
 		ASSERT(version == 1);
-		ar& count& area;
 	}
 };
 
@@ -1131,13 +1129,13 @@ struct FieldValueBlockEncoding<TimeAndValue<bool>> {
 	FieldValueBlockEncoding() : prev(), prev_combined(0) {}
 	inline void write(BinaryWriter& w, TimeAndValue<bool> const& v) {
 		int64_t combined = (v.time << 1) | (v.value ? 1 : 0);
-		w << CompressedInt<int64_t>(combined - prev_combined);
+		old_serializer(w, CompressedInt<int64_t>(combined - prev_combined));
 		prev = v;
 		prev_combined = combined;
 	}
 	TimeAndValue<bool> read(BinaryReader& r) {
 		CompressedInt<int64_t> d;
-		r >> d;
+		old_serializer(r, d);
 		prev_combined += d.value;
 		prev.value = prev_combined & 1;
 		prev.time = prev_combined << 1;
@@ -1183,10 +1181,10 @@ public:
 
 	Standalone<StringRef> getLatestAsValue() {
 		FieldValueBlockEncoding<TimeAndValue<T>> enc;
-		BinaryWriter wr(AssumeVersion(g_network->protocolVersion()));
+		BinaryWriter wr(AssumeVersion(oldProtocolVersion));
 		// Write a header so the client can treat this value like a normal data value block.
 		// TOOD: If it is useful, this could be the current header value of the most recently logged level.
-		wr << FieldHeader<TimeAndValue<T>>();
+		old_serializer(wr, FieldHeader<TimeAndValue<T>>());
 		enc.write(wr, tv);
 		return wr.toStringRef();
 	}

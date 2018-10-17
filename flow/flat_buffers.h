@@ -277,6 +277,7 @@ struct struct_like_traits<std::tuple<Ts...>> : std::true_type {
 		std::get<i>(m) = t;
 	}
 };
+
 template <class T>
 struct scalar_traits<T, std::enable_if_t<std::is_integral<T>::value || std::is_floating_point<T>::value>>
   : std::true_type {
@@ -690,6 +691,7 @@ private:
 };
 
 struct InsertVTableLambda {
+	static constexpr bool isDeserializing = true;
 	std::set<const VTable*>& vtables;
 
 	template <class... Members>
@@ -806,6 +808,7 @@ private:
 
 template <class Writer>
 struct SaveVisitorLambda {
+	static constexpr bool isDeserializing = false;
 	const VTableSet* vtableset;
 	Writer& writer;
 
@@ -1158,7 +1161,7 @@ struct EnsureTable {
 		if constexpr (detail::expect_serialize_member<T>) {
 			t.serialize(ar);
 		} else {
-			serializer(ar, v1(t));
+			flat_buffers::serializer(ar, t);
 		}
 	}
 	T& asUnderlyingType() { return t; }

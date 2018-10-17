@@ -109,6 +109,32 @@ struct NetworkAddress {
 	}
 };
 
+namespace flat_buffers {
+
+template <>
+struct scalar_traits<NetworkAddress> : std::true_type {
+	constexpr static size_t size = sizeof(NetworkAddress);
+	static_assert(sizeof(NetworkAddress) == sizeof(uint32_t) + 2 * sizeof(uint16_t));
+	static void save(uint8_t* buffer, const NetworkAddress& address) {
+		*reinterpret_cast<uint32_t*>(buffer) = address.ip;
+		buffer += sizeof(address.ip);
+		*reinterpret_cast<uint16_t*>(buffer) = address.port;
+		buffer += sizeof(address.port);
+		*reinterpret_cast<uint16_t*>(buffer) = address.flags;
+	}
+
+	template <class Context>
+	static void load(const uint8_t* in, NetworkAddress& address, Context&) {
+		address.ip = *reinterpret_cast<const uint32_t*>(in);
+		in += sizeof(uint32_t);
+		address.port = *reinterpret_cast<const uint16_t*>(in);
+		in += sizeof(uint16_t);
+		address.flags = *reinterpret_cast<const uint16_t*>(in);
+	}
+};
+
+} // namespace flat_buffers
+
 std::string toIPString(uint32_t ip);
 std::string toIPVectorString(std::vector<uint32_t> ips);
 

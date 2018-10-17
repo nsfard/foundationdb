@@ -124,6 +124,9 @@ PolicyAcross::PolicyAcross(int count, std::string const& attribKey, IRepPolicyRe
 	return;
 }
 
+PolicyAcross::PolicyAcross(const SPolicyAcross& s)
+  : _count(s.count), _attribKey(s.attribKey), _policy(s.policy->toPolicy()) {}
+
 PolicyAcross::~PolicyAcross() {
 	return;
 }
@@ -381,6 +384,17 @@ bool PolicyAcross::selectReplicas(LocalitySetRef& fromServers, std::vector<Local
 	return (count >= _count);
 }
 
+PolicyAnd::PolicyAnd(const SPolicyAnd& other) {
+	_policies.reserve(other.policies.size());
+	_sortedPolicies.reserve(other.policies.size());
+	for (const auto& child : other.policies) {
+		auto p = child->toPolicy();
+		_policies.emplace_back(p);
+		_sortedPolicies.emplace_back(p);
+	}
+	std::sort(_sortedPolicies.begin(), _sortedPolicies.end(), PolicyAnd::comparePolicy);
+}
+
 bool PolicyAnd::validate(std::vector<LocalityEntry> const& solutionSet, LocalitySetRef const& fromServers) const {
 	bool valid = true;
 	for (auto& policy : _policies) {
@@ -453,6 +467,52 @@ void testReplicationPolicy(int nTests) {
 	          2, "data_center", IRepPolicyRef(new PolicyAcross(2, "data_hall", IRepPolicyRef(new PolicyOne()))))) }));
 
 	testPolicySerialization(policy);
+}
+
+SerializablePolicy PolicyOne::toSerializable() const {
+	SerializablePolicy res;
+	res.policy = SPolicyOne{};
+	return res;
+}
+
+SerializablePolicy PolicyAcross::toSerializable() const {
+	SPolicyAcross across;
+	across.count = _count;
+	across.attribKey = _attribKey;
+	across.policy = std::make_unique<SerializablePolicy>(_policy->toSerializable());
+	SerializablePolicy res;
+	res.policy = std::move(across);
+	return res;
+}
+
+SerializablePolicy PolicyAnd::toSerializable() const {
+	SPolicyAnd p;
+	p.policies.reserve(_policies.size());
+	for (const auto& child : _policies) {
+		p.policies.emplace_back(child->toSerializable());
+	}
+	SerializablePolicy res;
+	res.policy = p;
+	return res;
+}
+
+namespace {
+
+struct PolicyVisitor {
+	IRepPolicyRef result;
+
+	void operator()(Void) {}
+	void operator()(const SPolicyOne& policy) { result = IRepPolicyRef(new PolicyOne(policy)); }
+	void operator()(const SPolicyAcross& policy) { result = IRepPolicyRef(new PolicyAcross(policy)); }
+	void operator()(const SPolicyAnd& policy) { result = IRepPolicyRef(new PolicyAnd(policy)); }
+};
+
+} // namespace
+
+IRepPolicyRef SerializablePolicy::toPolicy() const {
+	PolicyVisitor visitor;
+	boost::apply_visitor(visitor, policy);
+	return visitor.result;
 }
 
 TEST_CASE("ReplicationPolicy/Serialization") {

@@ -20,6 +20,8 @@
 
 #pragma once
 #include <cstdint>
+#include "flat_buffers.h"
+#include "Error.h"
 
 // A signed compressed integer format that retains ordering in compressed form.
 // Format is: [~sign_bit] [unary_len] [value_bits]
@@ -47,84 +49,126 @@
 //   1111 1111 1111 1111 110n nnnn N{15}  125 bits  18 bytes
 template <typename IntType>
 struct CompressedInt {
+	constexpr static uint32_t file_identifier = 2944009;
 	CompressedInt(IntType i = 0) : value(i) {}
 	IntType value;
-	template <class Ar>
-	void serialize(Ar& ar) {
-		if (ar.isDeserializing) {
-			uint8_t b;
-			ar& b;
-			int bytesToRead = 0; // Additional bytes to read after the required first byte
-			bool positive = (b & 0x80) != 0; // Sign bit
-			if (!positive) b = ~b; // Negative, so invert bytes read
-			b &= 0x7f; // Clear sign bit
 
-			uint8_t hb = 0x40; // Next header bit to test
-			// Scan the unary len bits across multiple bytes if needed
-			while (1) {
-				if (hb == 0) { // Go to next byte if needed
-					ar& b; // Read byte
-					if (!positive) b = ~b; // Negative, so invert bytes read
+	template <class Fun>
+	void load(Fun readByte) {
+		uint8_t b;
+		b = readByte();
+		int bytesToRead = 0; // Additional bytes to read after the required first byte
+		bool positive = (b & 0x80) != 0; // Sign bit
+		if (!positive) b = ~b; // Negative, so invert bytes read
+		b &= 0x7f; // Clear sign bit
 
-					hb = 0x80; // Reset header test bit position
-					--bytesToRead; // Decrement bytes to read since a byte was just read
-				}
-				if ((b & hb) == 0) // If a 0 is found, found the end of the unary sequence
-					break;
-				++bytesToRead; // Found a 1 so increment bytes to read
-				b &= ~hb; // Clear the bit just tested.
-				hb >>= 1; // Shift header test bit to next lowest position
-			}
-
-			value = b; // b contains the highest byte of value
-			while (bytesToRead-- != 0) {
-				ar& b; // Read byte
+		uint8_t hb = 0x40; // Next header bit to test
+		// Scan the unary len bits across multiple bytes if needed
+		while (1) {
+			if (hb == 0) { // Go to next byte if needed
+				b = readByte(); // Read byte
 				if (!positive) b = ~b; // Negative, so invert bytes read
-				value <<= 8; // Shift value up to make room for new byte
-				value |= b; // OR the byte into place
-			}
 
-			if (!positive) // If negative, reverse all bits
-				value = ~value;
+				hb = 0x80; // Reset header test bit position
+				--bytesToRead; // Decrement bytes to read since a byte was just read
+			}
+			if ((b & hb) == 0) // If a 0 is found, found the end of the unary sequence
+				break;
+			++bytesToRead; // Found a 1 so increment bytes to read
+			b &= ~hb; // Clear the bit just tested.
+			hb >>= 1; // Shift header test bit to next lowest position
+		}
+
+		value = b; // b contains the highest byte of value
+		while (bytesToRead-- != 0) {
+			b = readByte();
+			if (!positive) b = ~b; // Negative, so invert bytes read
+			value <<= 8; // Shift value up to make room for new byte
+			value |= b; // OR the byte into place
+		}
+
+		if (!positive) // If negative, reverse all bits
+			value = ~value;
+	}
+
+	template <class Fun>
+	void save(Fun writeBytes) const {
+		uint8_t buf[sizeof(IntType) * 2];
+		int iv = sizeof(buf); // Index of last written value byte
+		bool neg = value < 0; // If value is negative, flip its bits
+		IntType v = neg ? ~value : value;
+
+		// Write the value bytes from LSB to the rightmost zero byte to the output buffer
+		while (v) {
+			buf[--iv] = (uint8_t)v;
+			v >>= 8;
+		};
+
+		int bitlen = (sizeof(buf) - iv) * 8; // Value bits written so far
+		if (bitlen != 0) { // Reduce bit length by leading 0s in highest value byte
+			uint8_t b = buf[iv]; // Get highest value byte
+			while (!(b & 0x80)) { // While its highest bit is not a 1
+				--bitlen; // Decrement bit length
+				b <<= 1; // Shift left to test next lowest position
+			}
+		}
+
+		int encodedLen = bitlen / 7 + 1; // Calculate length of total encoded value
+		int iStart = sizeof(buf) - encodedLen; // Starting index of encoded output byte
+		for (int ih = iStart; ih < iv; ++ih) // Clear any bytes not initialized with a value bit
+			buf[ih] = 0;
+		int ih = iStart;
+		uint8_t b = 0x80; // First unary len bit to set
+		for (int hb = encodedLen; hb > 0; --hb) { // Set the sign bit and all but the last unary len bit to 1
+			if (b == 0) { // Start writing a new byte if needed
+				++ih;
+				b = 0x80;
+			}
+			buf[ih] |= b;
+			b >>= 1;
+		}
+		if (neg) // If negative, bit flip the entire encoded thing
+			for (int i = iStart; i < sizeof(buf); ++i) buf[i] = ~buf[i];
+
+		writeBytes(buf + iStart, encodedLen);
+		// ar.serializeBytes(buf + iStart, encodedLen);
+	}
+
+	template <class Archiver>
+	void serialize(Archiver& ar) {
+		if constexpr (Archiver::isDeserializing) {
+			this->load([&ar]() { return *reinterpret_cast<const uint8_t*>(ar.readBytes(1)); });
 		} else {
-			uint8_t buf[sizeof(IntType) * 2];
-			int iv = sizeof(buf); // Index of last written value byte
-			bool neg = value < 0; // If value is negative, flip its bits
-			IntType v = neg ? ~value : value;
-
-			// Write the value bytes from LSB to the rightmost zero byte to the output buffer
-			while (v) {
-				buf[--iv] = (uint8_t)v;
-				v >>= 8;
-			};
-
-			int bitlen = (sizeof(buf) - iv) * 8; // Value bits written so far
-			if (bitlen != 0) { // Reduce bit length by leading 0s in highest value byte
-				uint8_t b = buf[iv]; // Get highest value byte
-				while (!(b & 0x80)) { // While its highest bit is not a 1
-					--bitlen; // Decrement bit length
-					b <<= 1; // Shift left to test next lowest position
-				}
-			}
-
-			int encodedLen = bitlen / 7 + 1; // Calculate length of total encoded value
-			int iStart = sizeof(buf) - encodedLen; // Starting index of encoded output byte
-			for (int ih = iStart; ih < iv; ++ih) // Clear any bytes not initialized with a value bit
-				buf[ih] = 0;
-			int ih = iStart;
-			uint8_t b = 0x80; // First unary len bit to set
-			for (int hb = encodedLen; hb > 0; --hb) { // Set the sign bit and all but the last unary len bit to 1
-				if (b == 0) { // Start writing a new byte if needed
-					++ih;
-					b = 0x80;
-				}
-				buf[ih] |= b;
-				b >>= 1;
-			}
-			if (neg) // If negative, bit flip the entire encoded thing
-				for (int i = iStart; i < sizeof(buf); ++i) buf[i] = ~buf[i];
-
-			ar.serializeBytes(buf + iStart, encodedLen);
+			this->save([&ar](const void* data, int wlen) { ar.serializeBytes(data, wlen); });
 		}
 	}
 };
+
+namespace flat_buffers {
+template <class IntType>
+struct dynamic_size_traits<CompressedInt<IntType>> : std::true_type {
+	using type = CompressedInt<IntType>;
+	static WriteRawMemory save(const type& in) {
+		std::unique_ptr<uint8_t[]> res;
+		size_t len;
+		in.save([&res, &len](const void* data, int wlen) {
+			len = wlen;
+			res.reset(new uint8_t[wlen]);
+			auto d = reinterpret_cast<const uint8_t*>(data);
+			std::copy(d, d + wlen, res.get());
+		});
+		return { { flat_buffers::ownedPtr(const_cast<const uint8_t*>(res.release())), len } };
+	}
+
+	// Context is an arbitrary type that is plumbed by reference throughout the
+	// load call tree.
+	template <class Context>
+	static void load(const uint8_t* buffer, size_t sz, type& out, Context&) {
+		size_t offset = 0;
+		out.load([&offset, buffer, sz]() {
+			ASSERT(offset < sz);
+			return buffer[offset++];
+		});
+	}
+};
+} // namespace flat_buffers

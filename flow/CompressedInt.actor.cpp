@@ -53,10 +53,10 @@ void printBitsBig(size_t const size, void const* const ptr) {
 
 template <typename IntType>
 void testCompressedInt(IntType n, StringRef rep = StringRef()) {
-	BinaryWriter w(AssumeVersion(g_network->protocolVersion()));
+	BinaryWriter w(AssumeVersion(oldProtocolVersion));
 	CompressedInt<IntType> cn(n);
 
-	w << cn;
+	serializer(w, cn);
 	if (rep.size() != 0 && w.toStringRef() != rep) {
 		printf("WRONG ENCODING:\n");
 		printf("  test value (BigE):  ");
@@ -70,8 +70,8 @@ void testCompressedInt(IntType n, StringRef rep = StringRef()) {
 		rep = w.toStringRef();
 
 	cn.value = 0;
-	BinaryReader r(rep, AssumeVersion(g_network->protocolVersion()));
-	r >> cn;
+	BinaryReader r(rep, AssumeVersion(oldProtocolVersion));
+	serializer(r, cn);
 
 	if (cn.value != n) {
 		printf("FAILURE:\n");

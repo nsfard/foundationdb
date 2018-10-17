@@ -114,6 +114,7 @@ Standalone<StringRef> concatenate(Iter b, Iter const& e) {
 
 class Void {
 public:
+	constexpr static uint32_t file_identifier = 2010442;
 	template <class Ar>
 	void serialize(Ar&) {}
 };
@@ -123,6 +124,8 @@ class Never {};
 template <class T>
 class Optional {
 public:
+	static constexpr flat_buffers::FileIdentifier file_identifier =
+	    (0x10 << 24) | flat_buffers::FileIdentifierFor<T>::value;
 	Optional() : valid(false) {}
 	Optional(const Optional<T>& o) : valid(o.valid) {
 		if (valid) new (&value) T(o.get());
@@ -187,10 +190,10 @@ public:
 	void serialize(Ar& ar) {
 		// SOMEDAY: specialize for space efficiency?
 		if (valid && Ar::isDeserializing) (*(T*)&value).~T();
-		ar& valid;
+		serializer(ar, valid);
 		if (valid) {
 			if (Ar::isDeserializing) new (&value) T();
-			ar&*(T*)&value;
+			serializer(ar, *reinterpret_cast<T*>(&value));
 		}
 	}
 
@@ -208,9 +211,32 @@ private:
 	bool valid;
 };
 
+namespace flat_buffers {
+template <class T>
+struct union_like_traits<Optional<T>> : std::true_type {
+	using Member = Optional<T>;
+	using alternatives = pack<T>;
+	static uint8_t index(const Member& variant) { return 0; }
+	static bool empty(const Member& variant) { return !variant.present(); }
+
+	template <int i>
+	static const T& get(const Member& variant) {
+		static_assert(i == 0);
+		return variant.get();
+	}
+
+	template <size_t i>
+	static const void assign(Member& member, const T& t) {
+		member = t;
+	}
+};
+} // namespace flat_buffers
+
 template <class T>
 class ErrorOr {
 public:
+	constexpr static flat_buffers::FileIdentifier file_identifier =
+	    (0x1 << 24) | flat_buffers::FileIdentifierFor<T>::value;
 	ErrorOr() : error(default_error_or()) {}
 	ErrorOr(Error const& error) : error(error) {}
 	ErrorOr(const ErrorOr<T>& o) : error(o.error) {
@@ -269,10 +295,10 @@ public:
 	template <class Ar>
 	void serialize(Ar& ar) {
 		// SOMEDAY: specialize for space efficiency?
-		ar& error;
+		old_serializer(ar, error);
 		if (present()) {
 			if (Ar::isDeserializing) new (&value) T();
-			ar&*(T*)&value;
+			old_serializer(ar, *reinterpret_cast<T*>(&value));
 		}
 	}
 
@@ -287,6 +313,36 @@ private:
 	typename std::aligned_storage<sizeof(T), __alignof(T)>::type value;
 	Error error;
 };
+
+namespace flat_buffers {
+template <class T>
+struct union_like_traits<ErrorOr<T>> : std::true_type {
+	using Member = ErrorOr<T>;
+	using alternatives = pack<Error, T>;
+	static uint8_t index(const Member& variant) { return variant.present() ? 1 : 0; }
+	static bool empty(const Member& variant) { return false; }
+
+	template <int i>
+	static const index_t<i, alternatives>& get(const Member& m) {
+		if constexpr (i == 0) {
+			return m.getError();
+		} else {
+			static_assert(i == 1);
+			return m.get();
+		}
+	}
+
+	template <int i, class Alternative>
+	static const void assign(Member& m, const Alternative& a) {
+		if constexpr (i == 0) {
+			m = a;
+		} else {
+			static_assert(i == 1);
+			m = a;
+		}
+	}
+};
+} // namespace flat_buffers
 
 template <class T>
 struct Callback {

@@ -127,7 +127,7 @@ struct EndpointNotFoundReceiver : NetworkMessageReceiver {
 	virtual void receive(ArenaReader& reader) {
 		// Remote machine tells us it doesn't have endpoint e
 		Endpoint e;
-		reader >> e;
+		serializer(reader, e);
 		IFailureMonitor::failureMonitor().endpointNotFound(e);
 	}
 };
@@ -140,7 +140,7 @@ struct PingReceiver : NetworkMessageReceiver {
 	}
 	virtual void receive(ArenaReader& reader) {
 		ReplyPromise<Void> reply;
-		reader >> reply;
+		serializer(reader, reply);
 		reply.send(Void());
 	}
 };
@@ -606,7 +606,7 @@ static void scanPackets(TransportData* transport, uint8_t*& unprocessed_begin, u
 #endif
 		ArenaReader reader(arena, StringRef(p, packetLen), AssumeVersion(peerProtocolVersion));
 		UID token;
-		reader >> token;
+		reader.serializeBinaryItem(token);
 
 		++transport->countPacketsReceived;
 
@@ -1013,7 +1013,7 @@ static PacketID sendPacket(TransportData* self, ISerializeSource const& what, co
 		}
 
 		wr.writeAhead(packetInfoSize, &packetInfoBuffer);
-		wr << destination.token;
+		wr.serializeBinaryItem(destination.token);
 		what.serializePacketWriter(wr);
 		pb = wr.finish();
 		len = wr.size() - packetInfoSize;

@@ -48,11 +48,6 @@ public:
 	} // Use as little as possible, so injected faults effectively test real faults!
 	bool isValid() const { return error_code != invalid_error_code; }
 
-	template <class Ar>
-	void serialize(Ar& ar) {
-		ar& error_code;
-	}
-
 	Error() : error_code(invalid_error_code), flags(0) {}
 	explicit Error(int error_code);
 

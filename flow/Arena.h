@@ -434,7 +434,7 @@ public:
 		// T tmp;
 		// ar >> tmp;
 		//*this = tmp;
-		ar&(*(T*)this) & arena();
+		serializer(ar, *static_cast<T*>(this), arena());
 	}
 
 	/*static Standalone<T> fakeStandalone( const T& t ) {
@@ -454,6 +454,8 @@ extern std::string format(const char* form, ...);
 #pragma pack(push, 4)
 class StringRef {
 public:
+	constexpr static flat_buffers::FileIdentifier file_identifier = 13300811;
+
 	StringRef() : data(0), length(0) {}
 	StringRef(Arena& p, const StringRef& toCopy) : data(new (p) uint8_t[toCopy.size()]), length(toCopy.size()) {
 		memcpy((void*)data, toCopy.data, length);
@@ -597,15 +599,29 @@ inline static uint8_t* mutateString(StringRef& s) {
 	return const_cast<uint8_t*>(s.begin());
 }
 
+namespace flat_buffers {
+template <>
+struct scalar_traits<Arena> : std::true_type {
+	constexpr static size_t size = 0;
+	static void save(uint8_t*, const Arena&) {}
+	// Context is an arbitrary type that is plumbed by reference throughout
+	// the load call tree.
+	template <class Context>
+	static void load(const uint8_t*, Arena& arena, Context& context) {
+		context.addArena(arena);
+	}
+};
+} // namespace flat_buffers
+
 template <class Archive>
 inline void load(Archive& ar, StringRef& value) {
 	uint32_t length;
-	ar >> length;
+	old_serializer(ar, length);
 	value = StringRef(ar.arenaRead(length), length);
 }
 template <class Archive>
 inline void save(Archive& ar, const StringRef& value) {
-	ar << (uint32_t)value.size();
+	old_serializer(ar, (uint32_t)value.size());
 	ar.serializeBytes(value.begin(), value.size());
 }
 inline bool operator==(const StringRef& lhs, const StringRef& rhs) {
@@ -631,6 +647,22 @@ inline bool operator>=(const StringRef& lhs, const StringRef& rhs) {
 	return !(lhs < rhs);
 }
 
+namespace flat_buffers {
+
+template <>
+struct dynamic_size_traits<StringRef> : std::true_type {
+	static WriteRawMemory save(const StringRef& str) { return { { unownedPtr(str.begin()), str.size() } }; }
+
+	template <class Context>
+	static void load(const uint8_t* ptr, size_t sz, StringRef& str, Context& context) {
+		// TODO(anoyes): Zero-copy is possible here for ArenaReader, since ptr
+		// should be owned by context.arena()
+		str = StringRef(context.arena(), ptr, sz);
+	}
+};
+
+} // namespace flat_buffers
+
 // This trait is used by VectorRef to determine if it should just memcpy the vector contents.
 // FIXME:  VectorRef really should use std::is_trivially_copyable for this BUT that is not implemented
 // in gcc c++0x so instead we will use this custom trait which defaults to std::is_trivial, which
@@ -644,6 +676,9 @@ struct memcpy_able<UID> : std::integral_constant<bool, true> {};
 template <class T>
 class VectorRef {
 public:
+	static constexpr flat_buffers::FileIdentifier file_identifier =
+	    (0x8 << 24) | flat_buffers::FileIdentifierFor<T>::value;
+	using value_type = T;
 	// T must be trivially destructible (and copyable)!
 	VectorRef() : data(0), m_size(0), m_capacity(0) {}
 
@@ -763,21 +798,46 @@ private:
 		m_capacity = requiredCapacity;
 	}
 };
+
+namespace flat_buffers {
+
+template <class T>
+struct vector_like_traits<VectorRef<T>> : std::true_type {
+	using Vec = VectorRef<T>;
+	using value_type = typename Vec::value_type;
+	using iterator = const T*;
+	using insert_iterator = T*;
+
+	static size_t num_entries(const VectorRef<T>& v) { return v.size(); }
+	template <class Context>
+	static void reserve(VectorRef<T>& v, size_t s, Context& context) {
+		v.resize(context.arena(), s);
+	}
+
+	static insert_iterator insert(Vec& v) { return v.begin(); }
+	static iterator begin(const Vec& v) { return v.begin(); }
+};
+
+static_assert(detail::is_vector_like<VectorRef<StringRef>>);
+
+} // namespace flat_buffers
+
 template <class Archive, class T>
 inline void load(Archive& ar, VectorRef<T>& value) {
 	// FIXME: range checking for length, here and in other serialize code
 	uint32_t length;
-	ar >> length;
+	old_serializer(ar, length);
 	UNSTOPPABLE_ASSERT(length * sizeof(T) < (100 << 20));
 	// SOMEDAY: Can we avoid running constructors for all the values?
 	value.resize(ar.arena(), length);
-	for (uint32_t i = 0; i < length; i++) ar >> value[i];
+	for (uint32_t i = 0; i < length; i++) old_serializer(ar, value[i]);
 }
+
 template <class Archive, class T>
 inline void save(Archive& ar, const VectorRef<T>& value) {
 	uint32_t length = value.size();
-	ar << length;
-	for (uint32_t i = 0; i < length; i++) ar << value[i];
+	old_serializer(ar, length);
+	for (uint32_t i = 0; i < length; i++) old_serializer(ar, value[i]);
 }
 
 void ArenaBlock::destroy() {

@@ -65,12 +65,13 @@ struct ModelHolder : NonCopyable, public ReferenceCounted<ModelHolder> {
 };
 
 struct LoadBalancedReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 2485557;
 	double penalty;
 	LoadBalancedReply() : penalty(1.0) {}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& penalty;
+		serializer(ar, penalty);
 	}
 };
 
