@@ -35,6 +35,8 @@ class UID {
 	uint64_t part[2];
 
 public:
+	constexpr static flat_buffers::FileIdentifier file_identifier = 10151939;
+
 	UID() { part[0] = part[1] = 0; }
 	UID(uint64_t a, uint64_t b) {
 		part[0] = a;

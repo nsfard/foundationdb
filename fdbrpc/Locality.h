@@ -25,6 +25,7 @@
 #include "flow/flow.h"
 
 struct ProcessClass {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 9829418;
 	// This enum is stored in restartInfo.ini for upgrade tests, so be very careful about changing the existing items!
 	enum ClassType {
 		UnsetClass,
@@ -175,7 +176,7 @@ public:
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& _class& _source;
+		serializer(ar, _class, _source);
 	}
 };
 
@@ -246,37 +247,41 @@ public:
 	void serialize(Ar& ar) {
 		// Locality is persisted in the database inside StorageServerInterface, so changes here have to be
 		// versioned carefully!
-		if (ar.protocolVersion() >= 0x0FDB00A446020001LL) {
-			Standalone<StringRef> key;
-			Optional<Standalone<StringRef>> value;
-			uint64_t mapSize = (uint64_t)_data.size();
-			ar& mapSize;
-			if (ar.isDeserializing) {
-				for (size_t i = 0; i < mapSize; i++) {
-					ar& key& value;
-					_data[key] = value;
+		if constexpr (only_old_protocol<Ar>) {
+			if (ar.protocolVersion() >= 0x0FDB00A446020001LL) {
+				Standalone<StringRef> key;
+				Optional<Standalone<StringRef>> value;
+				uint64_t mapSize = (uint64_t)_data.size();
+				old_serializer(ar, mapSize);
+				if (ar.isDeserializing) {
+					for (size_t i = 0; i < mapSize; i++) {
+						old_serializer(ar, key, value);
+						_data[key] = value;
+					}
+				} else {
+					for (auto it = _data.begin(); it != _data.end(); it++) {
+						key = it->first;
+						value = it->second;
+						old_serializer(ar, key, value);
+					}
 				}
 			} else {
-				for (auto it = _data.begin(); it != _data.end(); it++) {
-					key = it->first;
-					value = it->second;
-					ar& key& value;
+				ASSERT(ar.isDeserializing);
+				UID zoneId, dcId, processId;
+				old_serializer(ar, zoneId, dcId);
+				set(keyZoneId, Standalone<StringRef>(zoneId.toString()));
+				set(keyDcId, Standalone<StringRef>(dcId.toString()));
+
+				if (ar.protocolVersion() >= 0x0FDB00A340000001LL) {
+					old_serializer(ar, processId);
+					set(keyProcessId, Standalone<StringRef>(processId.toString()));
+				} else {
+					int _machineClass = ProcessClass::UnsetClass;
+					old_serializer(ar, _machineClass);
 				}
 			}
 		} else {
-			ASSERT(ar.isDeserializing);
-			UID zoneId, dcId, processId;
-			ar& zoneId& dcId;
-			set(keyZoneId, Standalone<StringRef>(zoneId.toString()));
-			set(keyDcId, Standalone<StringRef>(dcId.toString()));
-
-			if (ar.protocolVersion() >= 0x0FDB00A340000001LL) {
-				ar& processId;
-				set(keyProcessId, Standalone<StringRef>(processId.toString()));
-			} else {
-				int _machineClass = ProcessClass::UnsetClass;
-				ar& _machineClass;
-			}
+			serializer(ar, _data);
 		}
 	}
 
@@ -302,6 +307,7 @@ static std::string describeDataHalls(std::vector<LocalityData> const& items, int
 }
 
 struct ProcessData {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 14575945;
 	LocalityData locality;
 	ProcessClass processClass;
 	NetworkAddress address;
@@ -312,7 +318,7 @@ struct ProcessData {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& locality& processClass& address;
+		serializer(ar, locality, processClass, address);
 	}
 
 	struct sort_by_address {

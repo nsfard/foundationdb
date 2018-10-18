@@ -44,6 +44,7 @@ enum {
 
 #pragma pack(push, 1)
 struct Tag {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 12963208;
 	int8_t locality;
 	uint16_t id;
 
@@ -58,7 +59,7 @@ struct Tag {
 
 	template <class Ar>
 	force_inline void serialize_unversioned(Ar& ar) {
-		ar& locality& id;
+		old_serializer(ar, locality, id);
 	}
 };
 #pragma pack(pop)
@@ -71,6 +72,30 @@ template <class Ar>
 void save(Ar& ar, Tag const& tag) {
 	const_cast<Tag&>(tag).serialize_unversioned(ar);
 }
+
+namespace flat_buffers {
+
+template <>
+struct scalar_traits<Tag> : std::true_type {
+	using locality_traits = scalar_traits<int8_t>;
+	using id_traits = scalar_traits<uint16_t>;
+
+	constexpr static size_t size = locality_traits::size + id_traits::size;
+	static void save(uint8_t* buf, const Tag& value) {
+		locality_traits::save(buf, value.locality);
+		id_traits::save(buf + locality_traits::size, value.id);
+	}
+
+	// Context is an arbitrary type that is plumbed by reference throughout the
+	// load call tree.
+	template <class Context>
+	static void load(const uint8_t* buf, Tag& value, Context& context) {
+		locality_traits::load<Context>(buf, value.locality, context);
+		id_traits::load<Context>(buf + locality_traits::size, value.id, context);
+	}
+};
+
+} // namespace flat_buffers
 
 static const Tag invalidTag{ tagLocalitySpecial, 0 };
 static const Tag txsTag{ tagLocalitySpecial, 1 };
@@ -160,6 +185,7 @@ inline bool equalsKeyAfter(const KeyRef& key, const KeyRef& compareKey) {
 }
 
 struct KeyRangeRef {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 663178;
 	const KeyRef begin, end;
 	KeyRangeRef() {}
 	KeyRangeRef(const KeyRef& begin, const KeyRef& end) : begin(begin), end(end) {
@@ -194,7 +220,7 @@ struct KeyRangeRef {
 
 	template <class Ar>
 	force_inline void serialize(Ar& ar) {
-		ar& const_cast<KeyRef&>(begin) & const_cast<KeyRef&>(end);
+		serializer(ar, const_cast<KeyRef&>(begin), const_cast<KeyRef&>(end));
 		if (begin > end) {
 			throw inverted_range();
 		};
@@ -216,6 +242,7 @@ inline KeyRangeRef operator&(const KeyRangeRef& lhs, const KeyRangeRef& rhs) {
 }
 
 struct KeyValueRef {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 7726222;
 	KeyRef key;
 	ValueRef value;
 	KeyValueRef() {}
@@ -228,7 +255,7 @@ struct KeyValueRef {
 
 	template <class Ar>
 	force_inline void serialize(Ar& ar) {
-		ar& key& value;
+		serializer(ar, key, value);
 	}
 
 	struct OrderByKey {
@@ -325,6 +352,7 @@ private:
 	KeyRef key; // Find the last item less than key
 
 public:
+	constexpr static flat_buffers::FileIdentifier file_identifier = 7167901;
 	bool orEqual; // (or equal to key, if this is true)
 	int offset; // and then move forward this many items (or backward if negative)
 	KeySelectorRef() {}
@@ -383,7 +411,7 @@ public:
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& key& orEqual& offset;
+		serializer(ar, key, orEqual, offset);
 	}
 };
 
@@ -411,6 +439,7 @@ inline KeySelectorRef operator-(const KeySelectorRef& s, int off) {
 
 template <class Val>
 struct KeyRangeWith : KeyRange {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 3054493;
 	Val value;
 	KeyRangeWith() {}
 	KeyRangeWith(const KeyRangeRef& range, const Val& value) : KeyRange(range), value(value) {}
@@ -418,7 +447,7 @@ struct KeyRangeWith : KeyRange {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar&((KeyRange&)*this) & value;
+		serializer(ar, ((KeyRange&)*this), value);
 	}
 };
 template <class Val>
@@ -457,6 +486,7 @@ struct GetRangeLimits {
 };
 
 struct RangeResultRef : VectorRef<KeyValueRef> {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 848742;
 	bool more; // True if (but not necessarily only if) values remain in the *key* range requested (possibly beyond the
 	           // limits requested) False implies that no such values remain
 	Optional<KeyRef> readThrough; // Only present when 'more' is true. When present, this value represent the end (or
@@ -478,11 +508,12 @@ struct RangeResultRef : VectorRef<KeyValueRef> {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar&((VectorRef<KeyValueRef>&)*this) & more& readThrough& readToBegin& readThroughEnd;
+		serializer(ar, ((VectorRef<KeyValueRef>&)*this), more, readThrough, readToBegin, readThroughEnd);
 	}
 };
 
 struct KeyValueStoreType {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 9993823;
 	// These enumerated values are stored in the database configuration, so can NEVER be changed.  Only add new ones
 	// just before END.
 	enum StoreType { SSD_BTREE_V1, MEMORY, SSD_BTREE_V2, END };
@@ -495,7 +526,7 @@ struct KeyValueStoreType {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& type;
+		serializer(ar, type);
 	}
 
 	std::string toString() const {
@@ -517,6 +548,7 @@ private:
 
 // Contains the amount of free and total space for a storage server, in bytes
 struct StorageBytes {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 5836396;
 	int64_t free;
 	int64_t total;
 	int64_t used; // Used by *this* store, not total-free
@@ -529,7 +561,7 @@ struct StorageBytes {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& free& total& used& available;
+		serializer(ar, free, total, used, available);
 	}
 };
 
@@ -561,6 +593,7 @@ struct LogMessageVersion {
 };
 
 struct AddressExclusion {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 8247294;
 	uint32_t ip;
 	int port;
 
@@ -610,11 +643,35 @@ struct AddressExclusion {
 	}
 };
 
+namespace flat_buffers {
+
+template <>
+struct scalar_traits<AddressExclusion> : std::true_type {
+	using ip_traits = scalar_traits<uint32_t>;
+	using port_traits = scalar_traits<int>;
+	constexpr static size_t size = ip_traits::size + port_traits::size;
+	static void save(uint8_t* buf, const AddressExclusion& value) {
+		ip_traits::save(buf, value.ip);
+		port_traits::save(buf + ip_traits::size, value.port);
+	}
+
+	// Context is an arbitrary type that is plumbed by reference throughout the
+	// load call tree.
+	template <class Context>
+	static void load(const uint8_t* buf, AddressExclusion& value, Context&) {
+		ip_traits::load<Context>(buf, value.ip);
+		port_traits::load<Context>(buf + ip_traits::size, value.port);
+	}
+};
+
+} // namespace flat_buffers
+
 static bool addressExcluded(std::set<AddressExclusion> const& exclusions, NetworkAddress const& addr) {
 	return exclusions.count(AddressExclusion(addr.ip, addr.port)) || exclusions.count(AddressExclusion(addr.ip));
 }
 
 struct ClusterControllerPriorityInfo {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 9958319;
 	enum DCFitness {
 		FitnessPrimary,
 		FitnessRemote,
@@ -656,7 +713,7 @@ struct ClusterControllerPriorityInfo {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& processClassFitness& isExcluded& dcFitness;
+		serializer(ar, processClassFitness, isExcluded, dcFitness);
 	}
 };
 

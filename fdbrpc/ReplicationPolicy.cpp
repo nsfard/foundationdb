@@ -469,6 +469,8 @@ void testReplicationPolicy(int nTests) {
 	testPolicySerialization(policy);
 }
 
+SPolicyAcross::SPolicyAcross() : policy(new SerializablePolicy()) {}
+
 SerializablePolicy PolicyOne::toSerializable() const {
 	SerializablePolicy res;
 	res.policy = SPolicyOne{};
@@ -489,10 +491,10 @@ SerializablePolicy PolicyAnd::toSerializable() const {
 	SPolicyAnd p;
 	p.policies.reserve(_policies.size());
 	for (const auto& child : _policies) {
-		p.policies.emplace_back(child->toSerializable());
+		p.policies.emplace_back(std::make_unique<SerializablePolicy>(child->toSerializable()));
 	}
 	SerializablePolicy res;
-	res.policy = p;
+	res.policy = std::move(p);
 	return res;
 }
 

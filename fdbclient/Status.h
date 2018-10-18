@@ -22,8 +22,11 @@
 #define FDBCLIENT_STATUS_H
 
 #include "../fdbrpc/JSONDoc.h"
+#include <flow/serialize.h>
 
 struct StatusObject : json_spirit::mObject {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 16016214;
+
 	typedef json_spirit::mObject Map;
 	typedef json_spirit::mArray Array;
 
@@ -31,11 +34,32 @@ struct StatusObject : json_spirit::mObject {
 	StatusObject(json_spirit::mObject const& o) : json_spirit::mObject(o) {}
 };
 
+template <>
+struct flat_buffers::dynamic_size_traits<StatusObject> : std::true_type {
+	using string_traits = dynamic_size_traits<std::string>;
+
+	static WriteRawMemory save(const StatusObject& s) {
+		std::string value = json_spirit::write_string(json_spirit::mValue(s));
+		auto buf = new std::string::value_type[value.size()];
+		std::copy(value.begin(), value.end(), buf);
+		return { { ownedPtr(reinterpret_cast<const uint8_t*>(buf)), value.size() } };
+	}
+
+	template <class Context>
+	static void load(const uint8_t* p, size_t n, StatusObject& s, Context& context) {
+		std::string value;
+		string_traits::load(p, n, value, context);
+		json_spirit::mValue mv;
+		json_spirit::read_string(value, mv);
+		s = StatusObject(mv.get_obj());
+	}
+};
+
 template <class Ar>
 void load(Ar& ar, StatusObject& statusObj) {
 	std::string value;
 	int32_t length;
-	ar >> length;
+	old_serializer(ar, length);
 	value.resize(length);
 	ar.serializeBytes(&value[0], (int)value.length());
 	json_spirit::mValue mv;
@@ -48,7 +72,7 @@ void load(Ar& ar, StatusObject& statusObj) {
 template <class Ar>
 void save(Ar& ar, StatusObject const& statusObj) {
 	std::string value = json_spirit::write_string(json_spirit::mValue(statusObj));
-	ar << (int32_t)value.length();
+	old_serializer(ar, (int32_t)value.length());
 	ar.serializeBytes((void*)&value[0], (int)value.length());
 	ASSERT(ar.protocolVersion() != 0);
 }

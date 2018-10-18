@@ -2706,8 +2706,8 @@ ACTOR Future<int> cli(CLIOptions opt, LineNoise* plinenoise) {
 							wait(makeInterruptable(success(sampleRateFuture) && success(sizeLimitFuture)));
 							std::string sampleRateStr = "default", sizeLimitStr = "default";
 							if (sampleRateFuture.get().present()) {
-								const double sampleRateDbl =
-								    BinaryReader::fromStringRef<double>(sampleRateFuture.get().get(), Unversioned());
+								const double sampleRateDbl = BinaryReader::fromStringRef<double, Unversioned, true>(
+								    sampleRateFuture.get().get(), Unversioned());
 								if (!std::isinf(sampleRateDbl)) {
 									sampleRateStr = boost::lexical_cast<std::string>(sampleRateDbl);
 								}

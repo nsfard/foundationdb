@@ -293,7 +293,7 @@ template <class F, class S>
 struct serializable_traits<std::pair<F, S>> : std::true_type {
 	template <class Archiver>
 	static void serialize(Archiver& ar, std::pair<F, S>& p) {
-		serializer(ar, v2(p.first), v2(p.second));
+		serializer(ar, p.first, p.second);
 	}
 };
 
@@ -798,7 +798,7 @@ private:
 					current += current_offset;
 					load_helper(alternative, current, context);
 				}
-				UnionTraits::template assign<Alternative>(member, alternative);
+				UnionTraits::template assign<Alternative>(member, std::move(alternative));
 			} else {
 				load_<Alternative + 1>(type_tag, member);
 			}
@@ -850,6 +850,7 @@ struct SaveVisitorLambda {
 
 template <class Context>
 struct LoadMember {
+	static constexpr bool isDeserializing = true;
 	const uint16_t* const vtable;
 	const uint8_t* const message;
 	const uint16_t vtable_length;
@@ -918,7 +919,7 @@ struct LoadSaveHelper {
 			using type = index_t<i, types>;
 			type t;
 			load_helper(t, current + struct_offset<i>(types{}), context);
-			StructTraits::template assign<i>(member, t);
+			StructTraits::template assign<i>(member, std::move(t));
 		});
 	}
 
@@ -931,18 +932,33 @@ struct LoadSaveHelper {
 		dynamic_size_traits<U>::load(current, size, member, context);
 	}
 
+	template <class Context>
+	struct SerializeFun {
+		static constexpr bool isDeserializing = true;
+
+		const uint16_t* vtable;
+		const uint8_t* current;
+		Context& context;
+
+		SerializeFun(const uint16_t* vtable, const uint8_t* current, Context& context)
+		  : vtable(vtable), current(current), context(context) {}
+
+		template <class... Args>
+		void operator()(Args&... members) {
+			int i = 0;
+			uint16_t vtable_length = vtable[i++] / sizeof(uint16_t);
+			uint16_t table_length = vtable[i++];
+			for_each(LoadMember<Context>{ vtable, current, vtable_length, table_length, i, context }, members...);
+		}
+	};
+
 	template <class Member, class Context>
 	std::enable_if_t<expect_serialize_member<Member>> load(Member& member, const uint8_t* current, Context& context) {
 		uint32_t current_offset = interpret_as<uint32_t>(current);
 		current += current_offset;
 		int32_t vtable_offset = interpret_as<int32_t>(current);
 		const uint16_t* vtable = reinterpret_cast<const uint16_t*>(current - vtable_offset);
-		auto fun = [&](auto&... members) {
-			int i = 0;
-			uint16_t vtable_length = vtable[i++] / sizeof(uint16_t);
-			uint16_t table_length = vtable[i++];
-			for_each(LoadMember<Context>{ vtable, current, vtable_length, table_length, i, context }, members...);
-		};
+		SerializeFun<Context> fun(vtable, current, context);
 		if constexpr (serializable_traits<Member>::value) {
 			serializable_traits<Member>::serialize(fun, member);
 		} else {
@@ -1159,7 +1175,11 @@ struct EnsureTable {
 	template <class Archive>
 	void serialize(Archive& ar) {
 		if constexpr (detail::expect_serialize_member<T>) {
-			t.serialize(ar);
+			if constexpr (serializable_traits<T>::value) {
+				serializable_traits<T>::serialize(ar, t);
+			} else {
+				t.serialize(ar);
+			}
 		} else {
 			flat_buffers::serializer(ar, t);
 		}

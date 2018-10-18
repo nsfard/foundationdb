@@ -380,22 +380,22 @@ ACTOR static Future<Void> clientStatusUpdateActor(DatabaseContext* cx) {
 			for (auto& bw : cx->clientStatusUpdater.outStatusQ) {
 				int64_t value_size_limit =
 				    BUGGIFY ? g_random->randomInt(1e3, CLIENT_KNOBS->VALUE_SIZE_LIMIT) : CLIENT_KNOBS->VALUE_SIZE_LIMIT;
-				int num_chunks = (bw.getLength() + value_size_limit - 1) / value_size_limit;
+				int num_chunks = (bw.size() + value_size_limit - 1) / value_size_limit;
 				std::string random_id = g_random->randomAlphaNumeric(16);
 				for (int i = 0; i < num_chunks; i++) {
 					TrInfoChunk chunk;
 					BinaryWriter chunkBW(Unversioned());
-					chunkBW << bigEndian32(i + 1) << bigEndian32(num_chunks);
+					old_serializer(chunkBW, bigEndian32(i + 1), bigEndian32(num_chunks));
 					chunk.key = KeyRef(clientLatencyName + std::string(10, '\x00') + "/" + random_id + "/" +
 					                   chunkBW.toStringRef().toString() + "/" + std::string(4, '\x00'));
 					int32_t pos = littleEndian32(clientLatencyName.size());
 					memcpy(mutateString(chunk.key) + chunk.key.size() - sizeof(int32_t), &pos, sizeof(int32_t));
 					if (i == num_chunks - 1) {
-						chunk.value = ValueRef(static_cast<uint8_t*>(bw.getData()) + (i * value_size_limit),
-						                       bw.getLength() - (i * value_size_limit));
+						chunk.value = ValueRef(reinterpret_cast<const uint8_t*>(bw.c_str()) + (i * value_size_limit),
+						                       bw.size() - (i * value_size_limit));
 					} else {
-						chunk.value =
-						    ValueRef(static_cast<uint8_t*>(bw.getData()) + (i * value_size_limit), value_size_limit);
+						chunk.value = ValueRef(reinterpret_cast<const uint8_t*>(bw.c_str()) + (i * value_size_limit),
+						                       value_size_limit);
 					}
 					trChunksQ.push_back(std::move(chunk));
 				}
@@ -2187,7 +2187,7 @@ void Transaction::addReadConflictRange(KeyRangeRef const& keys) {
 void Transaction::makeSelfConflicting() {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(LiteralStringRef("\xFF/SC/"));
-	wr << g_random->randomUniqueID();
+	old_serializer(wr, g_random->randomUniqueID());
 	auto r = singleKeyRange(wr.toStringRef(), tr.arena);
 	tr.transaction.read_conflict_ranges.push_back(tr.arena, r);
 	tr.transaction.write_conflict_ranges.push_back(tr.arena, r);

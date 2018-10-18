@@ -46,6 +46,7 @@ static const char* typeString[] = { "SetValue",
 	                                "AndV2" };
 
 struct MutationRef {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 8531399;
 	static const int OVERHEAD_BYTES = 12; // 12 is the size of Header in MutationList entries
 	enum Type : uint8_t {
 		SetValue = 0,
@@ -93,7 +94,7 @@ struct MutationRef {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& type& param1& param2;
+		serializer(ar, type, param1, param2);
 	}
 
 	// These masks define which mutation types have particular properties (they are used to implement
@@ -134,6 +135,8 @@ static inline bool isNonAssociativeOp(MutationRef::Type mutationType) {
 }
 
 struct CommitTransactionRef {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 2501961;
+
 	CommitTransactionRef() : read_snapshot(0) {}
 	CommitTransactionRef(Arena& a, const CommitTransactionRef& from)
 	  : read_conflict_ranges(a, from.read_conflict_ranges), write_conflict_ranges(a, from.write_conflict_ranges),
@@ -145,7 +148,7 @@ struct CommitTransactionRef {
 
 	template <class Ar>
 	force_inline void serialize(Ar& ar) {
-		ar& read_conflict_ranges& write_conflict_ranges& mutations& read_snapshot;
+		serializer(ar, read_conflict_ranges, write_conflict_ranges, mutations, read_snapshot);
 	}
 
 	// Convenience for internal code required to manipulate these without the Native API

@@ -1543,7 +1543,7 @@ struct CopyDiffLogsUpgradeTaskFunc : TaskFuncBase {
 				}
 
 				BinaryReader br(backupKeysPacked.get(), IncludeVersion());
-				br >> backupRanges;
+				serializer(br, backupRanges);
 				break;
 			} catch (Error& e) {
 				wait(tr->onError(e));
@@ -2593,7 +2593,7 @@ public:
 
 					if (backupKeysPacked.present()) {
 						BinaryReader br(backupKeysPacked.get(), IncludeVersion());
-						br >> backupRanges;
+						serializer(br, backupRanges);
 					}
 
 					switch (backupState) {

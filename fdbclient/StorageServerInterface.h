@@ -29,7 +29,7 @@
 #include "fdbrpc/LoadBalance.actor.h"
 
 struct StorageServerInterface {
-	constexpr static flat_buffers::FileIdentifier file_identifier = 1790171;
+	constexpr static flat_buffers::FileIdentifier file_identifier = 1111273;
 	enum { BUSY_ALLOWED = 0, BUSY_FORCE = 1, BUSY_LOCAL = 2 };
 
 	enum { LocationAwareLoadBalance = 1 };
@@ -64,7 +64,7 @@ struct StorageServerInterface {
 	void serialize(Ar& ar) {
 		// StorageServerInterface is persisted in the database and in the tLog's data structures, so changes here have
 		// to be versioned carefully!
-		if constexpr (is_old_archive<Ar>) {
+		if constexpr (only_old_protocol<Ar>) {
 			serializer(ar, uniqueID, locality, getVersion, getValue, getKey, getKeyValues, getShardState, waitMetrics,
 			           splitMetrics, getPhysicalMetrics, waitFailure, getQueuingMetrics, getKeyValueStoreType);
 			if (ar.protocolVersion() >= 0x0FDB00A200090001LL) serializer(ar, watchValue);
@@ -316,6 +316,7 @@ struct WaitMetricsRequest {
 };
 
 struct SplitMetricsReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 10456489;
 	Standalone<VectorRef<KeyRef>> splits;
 	StorageMetrics used;
 

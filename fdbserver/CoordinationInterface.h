@@ -53,6 +53,7 @@ struct GenerationRegInterface {
 };
 
 struct UniqueGeneration {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 6245158;
 	uint64_t generation;
 	UID uid;
 	UniqueGeneration() : generation(0) {}
@@ -65,11 +66,12 @@ struct UniqueGeneration {
 	bool operator==(UniqueGeneration const& r) const { return generation == r.generation && uid == r.uid; }
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& generation& uid;
+		serializer(ar, generation, uid);
 	}
 };
 
 struct GenerationRegReadRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 14877513;
 	Key key;
 	UniqueGeneration gen;
 	ReplyPromise<struct GenerationRegReadReply> reply;
@@ -77,11 +79,12 @@ struct GenerationRegReadRequest {
 	GenerationRegReadRequest(Key key, UniqueGeneration gen) : key(key), gen(gen) {}
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& key& gen& reply;
+		serializer(ar, key, gen, reply);
 	}
 };
 
 struct GenerationRegReadReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 801737;
 	Optional<Value> value;
 	UniqueGeneration gen, rgen;
 	GenerationRegReadReply() {}
@@ -89,11 +92,12 @@ struct GenerationRegReadReply {
 	  : value(value), gen(gen), rgen(rgen) {}
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& value& gen& rgen;
+		serializer(ar, value, gen, rgen);
 	}
 };
 
 struct GenerationRegWriteRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 16621074;
 	KeyValue kv;
 	UniqueGeneration gen;
 	ReplyPromise<UniqueGeneration> reply;
@@ -101,7 +105,7 @@ struct GenerationRegWriteRequest {
 	GenerationRegWriteRequest(KeyValue kv, UniqueGeneration gen) : kv(kv), gen(gen) {}
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& kv& gen& reply;
+		serializer(ar, kv, gen, reply);
 	}
 };
 
@@ -116,6 +120,7 @@ struct LeaderElectionRegInterface : ClientLeaderRegInterface {
 };
 
 struct CandidacyRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 10073468;
 	Key key;
 	LeaderInfo myInfo;
 	UID knownLeader, prevChangeID;
@@ -127,11 +132,12 @@ struct CandidacyRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& key& myInfo& knownLeader& prevChangeID& reply;
+		serializer(ar, key, myInfo, knownLeader, prevChangeID, reply);
 	}
 };
 
 struct LeaderHeartbeatRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 11931291;
 	Key key;
 	LeaderInfo myInfo;
 	UID prevChangeID;
@@ -143,11 +149,12 @@ struct LeaderHeartbeatRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& key& myInfo& prevChangeID& reply;
+		serializer(ar, key, myInfo, prevChangeID, reply);
 	}
 };
 
 struct ForwardRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 2894980;
 	Key key;
 	Value conn; // a cluster connection string
 	ReplyPromise<Void> reply;
@@ -157,7 +164,7 @@ struct ForwardRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& key& conn& reply;
+		serializer(ar, key, conn, reply);
 	}
 };
 

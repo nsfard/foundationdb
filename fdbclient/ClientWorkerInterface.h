@@ -30,6 +30,8 @@
 // Streams from WorkerInterface that are safe and useful to call from a client.
 // A ClientWorkerInterface is embedded as the first element of a WorkerInterface.
 struct ClientWorkerInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 16120894;
+
 	RequestStream<struct RebootRequest> reboot;
 	RequestStream<struct ProfilerRequest> profiler;
 
@@ -40,11 +42,13 @@ struct ClientWorkerInterface {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& reboot& profiler;
+		serializer(ar, reboot, profiler);
 	}
 };
 
 struct RebootRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 10244156;
+
 	bool deleteData;
 	bool checkData;
 
@@ -53,11 +57,13 @@ struct RebootRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& deleteData& checkData;
+		serializer(ar, deleteData, checkData);
 	}
 };
 
 struct ProfilerRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 12302973;
+
 	ReplyPromise<Void> reply;
 
 	enum class Type : std::int8_t { GPROF = 1, FLOW = 2 };
@@ -71,10 +77,44 @@ struct ProfilerRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& reply& type& action& duration& outputFile;
+		serializer(ar, reply, type, action, duration, outputFile);
 	}
 };
 BINARY_SERIALIZABLE(ProfilerRequest::Type);
 BINARY_SERIALIZABLE(ProfilerRequest::Action);
+
+template <>
+struct flat_buffers::scalar_traits<ProfilerRequest::Type> : std::true_type {
+	using type = typename ProfilerRequest::Type;
+	using underlying_type = std::underlying_type_t<type>;
+	using underlying_traits = scalar_traits<underlying_type>;
+
+	constexpr static size_t size = underlying_traits::size;
+
+	static void save(uint8_t* out, const type& t) {
+		underlying_traits::save(out, reinterpret_cast<underlying_type const&>(t));
+	}
+	template <class Context>
+	static void load(const uint8_t* in, type& t, Context& context) {
+		underlying_traits::load(in, reinterpret_cast<underlying_type&>(t), context);
+	}
+};
+
+template <>
+struct flat_buffers::scalar_traits<ProfilerRequest::Action> : std::true_type {
+	using type = typename ProfilerRequest::Action;
+	using underlying_type = std::underlying_type_t<type>;
+	using underlying_traits = scalar_traits<underlying_type>;
+
+	constexpr static size_t size = underlying_traits::size;
+
+	static void save(uint8_t* out, const type& t) {
+		underlying_traits::save(out, reinterpret_cast<underlying_type const&>(t));
+	}
+	template <class Context>
+	static void load(const uint8_t* in, type& t, Context& context) {
+		underlying_traits::load(in, reinterpret_cast<underlying_type&>(t), context);
+	}
+};
 
 #endif

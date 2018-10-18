@@ -29,6 +29,7 @@
 #include <iterator>
 
 struct TLogInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 3721665;
 	enum { LocationAwareLoadBalance = 1 };
 	LocalityData locality;
 	UID uniqueID;
@@ -67,33 +68,39 @@ struct TLogInterface {
 	template <class Ar>
 	void serialize(Ar& ar) {
 		ASSERT(ar.isDeserializing || uniqueID != UID());
-		ar& uniqueID& sharedTLogID& locality& peekMessages& popMessages& commit& lock& getQueuingMetrics&
-		    confirmRunning& waitFailure& recoveryFinished;
+		serializer(ar, uniqueID, sharedTLogID, locality, peekMessages, popMessages, commit, lock, getQueuingMetrics,
+		           confirmRunning, waitFailure, recoveryFinished);
 	}
 };
 
 struct TLogRecoveryFinishedRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 10236937;
+
 	ReplyPromise<Void> reply;
 
 	TLogRecoveryFinishedRequest() {}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& reply;
+		serializer(ar, reply);
 	}
 };
 
 struct TLogLockResult {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 8921562;
+
 	Version end;
 	Version knownCommittedVersion;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& end& knownCommittedVersion;
+		serializer(ar, end, knownCommittedVersion);
 	}
 };
 
 struct TLogConfirmRunningRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 4906911;
+
 	Optional<UID> debugID;
 	ReplyPromise<Void> reply;
 
@@ -102,11 +109,13 @@ struct TLogConfirmRunningRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& debugID& reply;
+		serializer(ar, debugID, reply);
 	}
 };
 
 struct VersionUpdateRef {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 16124964;
+
 	Version version;
 	MutationListRef mutations;
 	bool isPrivateData;
@@ -119,11 +128,13 @@ struct VersionUpdateRef {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& version& mutations& isPrivateData;
+		serializer(ar, version, mutations, isPrivateData);
 	}
 };
 
 struct VerUpdateRef {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 11403233;
+
 	Version version;
 	VectorRef<MutationRef> mutations;
 	bool isPrivateData;
@@ -135,11 +146,13 @@ struct VerUpdateRef {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& version& mutations& isPrivateData;
+		serializer(ar, version, mutations, isPrivateData);
 	}
 };
 
 struct TLogPeekReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 13221357;
+
 	Arena arena;
 	StringRef messages;
 	Version end;
@@ -150,11 +163,13 @@ struct TLogPeekReply {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& arena& messages& end& popped& maxKnownVersion& minKnownCommittedVersion& begin;
+		serializer(ar, arena, messages, end, popped, maxKnownVersion, minKnownCommittedVersion, begin);
 	}
 };
 
 struct TLogPeekRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 12140982;
+
 	Arena arena;
 	Version begin;
 	Tag tag;
@@ -169,11 +184,13 @@ struct TLogPeekRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& arena& begin& tag& returnIfBlocked& sequence& reply;
+		serializer(ar, arena, begin, tag, returnIfBlocked, sequence, reply);
 	}
 };
 
 struct TLogPopRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 12012193;
+
 	Arena arena;
 	Version to;
 	Version durableKnownCommittedVersion;
@@ -186,11 +203,13 @@ struct TLogPopRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& arena& to& durableKnownCommittedVersion& tag& reply;
+		serializer(ar, arena, to, durableKnownCommittedVersion, tag, reply);
 	}
 };
 
 struct TagMessagesRef {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 8011132;
+
 	Tag tag;
 	VectorRef<int> messageOffsets;
 
@@ -201,11 +220,13 @@ struct TagMessagesRef {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& tag& messageOffsets;
+		serializer(ar, tag, messageOffsets);
 	}
 };
 
 struct TLogCommitRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 7280113;
+
 	Arena arena;
 	Version prevVersion, version, knownCommittedVersion, minKnownCommittedVersion;
 
@@ -221,20 +242,25 @@ struct TLogCommitRequest {
 	    minKnownCommittedVersion(minKnownCommittedVersion), messages(messages), debugID(debugID) {}
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& prevVersion& version& knownCommittedVersion& minKnownCommittedVersion& messages& reply& arena& debugID;
+		serializer(ar, prevVersion, version, knownCommittedVersion, minKnownCommittedVersion, messages, reply, arena,
+		           debugID);
 	}
 };
 
 struct TLogQueuingMetricsRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 5630828;
+
 	ReplyPromise<struct TLogQueuingMetricsReply> reply;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& reply;
+		serializer(ar, reply);
 	}
 };
 
 struct TLogQueuingMetricsReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 11336818;
+
 	double localTime;
 	int64_t instanceID; // changes if bytesDurable and bytesInput reset
 	int64_t bytesDurable, bytesInput;
@@ -243,7 +269,7 @@ struct TLogQueuingMetricsReply {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& localTime& instanceID& bytesDurable& bytesInput& storageBytes& v;
+		serializer(ar, localTime, instanceID, bytesDurable, bytesInput, storageBytes, v);
 	}
 };
 

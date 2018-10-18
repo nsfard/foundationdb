@@ -64,6 +64,8 @@ machine and tracked at the endpoint level.
 */
 
 struct FailureStatus {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 14942476;
+
 	bool failed;
 
 	FailureStatus() : failed(true) {}
@@ -75,7 +77,7 @@ struct FailureStatus {
 	bool operator!=(FailureStatus const& r) const { return failed != r.failed; }
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& failed;
+		serializer(ar, failed);
 	}
 };
 

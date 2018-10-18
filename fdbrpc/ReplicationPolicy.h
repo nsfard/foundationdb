@@ -42,9 +42,9 @@ struct union_like_traits<boost::variant<Alternatives...>> : std::true_type {
 	}
 
 	template <size_t i, class Alternative>
-	static const void assign(Member& member, const Alternative& a) {
+	static const void assign(Member& member, Alternative&& a) {
 		static_assert(std::is_same_v<index_t<i, alternatives>, Alternative>);
-		member = a;
+		member = std::move(a);
 	}
 };
 
@@ -66,6 +66,8 @@ struct SPolicyAcross {
 	std::string attribKey;
 	std::unique_ptr<SerializablePolicy> policy;
 
+	SPolicyAcross();
+
 	template <class Archiver>
 	void serialize(Archiver& ar) {
 		serializer(ar, attribKey, count, *policy);
@@ -84,7 +86,7 @@ struct SPolicyAnd {
 struct SerializablePolicy {
 	constexpr static flat_buffers::FileIdentifier file_identifier = 9187331;
 
-	SerializablePolicy();
+	SerializablePolicy() : policy(Void()) {}
 
 	IRepPolicyRef toPolicy() const;
 
@@ -105,10 +107,10 @@ struct serializable_traits<std::unique_ptr<SerializablePolicy>> : std::true_type
 	template <class Archiver>
 	static void serialize(Archiver& ar, type& p) {
 		if constexpr (Archiver::isDeserializing) {
-			p = std::make_unique<SerializablePolicy>();
+			p.reset(new SerializablePolicy());
 			::serializer(ar, *p);
 		} else {
-			::serializer(ar, p ? *p : std::declval<SerializablePolicy>());
+			::serializer(ar, *p);
 		}
 	}
 };

@@ -70,8 +70,22 @@ struct is_old_archive_helper<T, std::void_t<typename T::OLD_ARCHIVE>> : std::tru
 template <class T>
 constexpr bool is_old_archive = is_old_archive_helper<T>::value;
 
+template <class T, class = void>
+struct only_old_protocol_helper : std::false_type {};
+
+template <class T>
+struct only_old_protocol_helper<T, std::void_t<typename T::OLD_PROTOCOL>> : std::true_type {};
+
+template <class T>
+constexpr bool only_old_protocol = only_old_protocol_helper<T>::value || is_old_archive<T>;
+
 template <class Archive, class... Items>
-std::enable_if_t<!is_old_archive<Archive>> serializer(Archive& ar, Items... items) {
+std::enable_if_t<!is_old_archive<Archive>> serializer(Archive& ar, Items&... items) {
+	ar(items...);
+}
+
+template <class Archive, class... Items>
+std::enable_if_t<!is_old_archive<Archive>> serializer(Archive& ar, const Items&... items) {
 	ar(items...);
 }
 
@@ -152,6 +166,7 @@ struct CallArchiver
                               detail::WriterMember<CallArchiver<Archive>>> {
 	Archive& ar;
 	static constexpr int isDeserializing = Archive::isDeserializing;
+	using OLD_PROTOCOL = void;
 
 	template <class U>
 	void serializeBinaryItem(const U& u) {
@@ -350,7 +365,7 @@ void serialize_fake_root(Archive& ar, flat_buffers::FileIdentifier file_identifi
 	if (ar.protocolVersion() < newProtocolVersion) {
 		old_serializer(ar, items...);
 	} else {
-		new_serializer_fake_root(ar, file_identifier, items...);
+		new_serialize_fake_root(ar, file_identifier, items...);
 	}
 #endif
 }
@@ -364,7 +379,7 @@ public:
 template <class Archive, class T1, class T2>
 class Serializer<Archive, std::pair<T1, T2>, void> {
 public:
-	static void serialize(Archive& ar, std::pair<T1, T2>& p) { serializer(ar, p.first, p.second); }
+	static void serialize(Archive& ar, std::pair<T1, T2>& p) { old_serializer(ar, p.first, p.second); }
 };
 
 template <class Archive, class T>
@@ -521,7 +536,7 @@ public:
 	template <class T, class VersionOptions>
 	static Standalone<StringRef> toValue(T const& t, VersionOptions vo) {
 		BinaryWriter wr(vo);
-		wr << t;
+		serializer(wr, t);
 		return wr.toStringRef();
 	}
 
@@ -793,11 +808,15 @@ public:
 
 	Arena& arena() { return m_pool; }
 
-	template <class T, class VersionOptions>
+	template <class T, class VersionOptions, bool enforce_old = false>
 	static T fromStringRef(StringRef sr, VersionOptions vo) {
 		T t;
 		BinaryReader r(sr, vo);
-		r >> t;
+		if constexpr (enforce_old) {
+			old_serializer(r, t);
+		} else {
+			serializer(r, t);
+		}
 		return t;
 	}
 
