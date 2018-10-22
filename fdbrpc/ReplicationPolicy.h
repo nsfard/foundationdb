@@ -24,98 +24,11 @@
 
 #include "flow/flow.h"
 #include "ReplicationTypes.h"
-
-#include <boost/variant.hpp>
-
-namespace flat_buffers {
-
-template <class... Alternatives>
-struct union_like_traits<boost::variant<Alternatives...>> : std::true_type {
-	using Member = boost::variant<Alternatives...>;
-	using alternatives = pack<Alternatives...>;
-	static uint8_t index(const Member& variant) { return variant.which(); }
-	static bool empty(const Member& variant) { return false; }
-
-	template <int i>
-	static const index_t<i, alternatives>& get(const Member& variant) {
-		return boost::get<index_t<i, alternatives>>(variant);
-	}
-
-	template <size_t i, class Alternative>
-	static const void assign(Member& member, Alternative&& a) {
-		static_assert(std::is_same_v<index_t<i, alternatives>, Alternative>);
-		member = std::move(a);
-	}
-};
-
-} // namespace flat_buffers
+#include <flow/serialize_variant.h>
 
 template <class Ar>
 void serializeReplicationPolicy(Ar& ar, IRepPolicyRef& policy);
 extern void testReplicationPolicy(int nTests);
-
-struct SerializablePolicy;
-
-struct SPolicyOne {
-	template <class Archiver>
-	void serialize(Archiver&) {}
-};
-
-struct SPolicyAcross {
-	int count;
-	std::string attribKey;
-	std::unique_ptr<SerializablePolicy> policy;
-
-	SPolicyAcross();
-
-	template <class Archiver>
-	void serialize(Archiver& ar) {
-		serializer(ar, attribKey, count, *policy);
-	}
-};
-
-struct SPolicyAnd {
-	std::vector<std::unique_ptr<SerializablePolicy>> policies;
-
-	template <class Archiver>
-	void serialize(Archiver& ar) {
-		serializer(ar, policies);
-	}
-};
-
-struct SerializablePolicy {
-	constexpr static flat_buffers::FileIdentifier file_identifier = 9187331;
-
-	SerializablePolicy() : policy(Void()) {}
-
-	IRepPolicyRef toPolicy() const;
-
-	boost::variant<Void, SPolicyOne, SPolicyAcross, SPolicyAnd> policy;
-	template <class Archiver>
-	void serialize(Archiver& ar) {
-		serializer(ar, policy);
-	}
-};
-
-namespace flat_buffers {
-
-// unique_ptr is usually a union-like type. However, we know that this is always non-null for policies and vector-like
-// does not support a union like type
-template <>
-struct serializable_traits<std::unique_ptr<SerializablePolicy>> : std::true_type {
-	using type = std::unique_ptr<SerializablePolicy>;
-	template <class Archiver>
-	static void serialize(Archiver& ar, type& p) {
-		if constexpr (Archiver::isDeserializing) {
-			p.reset(new SerializablePolicy());
-			::serializer(ar, *p);
-		} else {
-			::serializer(ar, *p);
-		}
-	}
-};
-
-} // namespace flat_buffers
 
 struct IReplicationPolicy : public ReferenceCounted<IReplicationPolicy> {
 	IReplicationPolicy() {}
@@ -140,6 +53,8 @@ struct IReplicationPolicy : public ReferenceCounted<IReplicationPolicy> {
 		refThis->delref_no_destroy();
 	}
 
+	virtual void deserializationDone() = 0;
+
 	// Utility functions
 	bool selectReplicas(LocalitySetRef& fromServers, std::vector<LocalityEntry>& results);
 	bool validate(LocalitySetRef const& solutionSet) const;
@@ -153,14 +68,12 @@ struct IReplicationPolicy : public ReferenceCounted<IReplicationPolicy> {
 		return keys;
 	}
 	virtual void attributeKeys(std::set<std::string>*) const = 0;
-
-	virtual SerializablePolicy toSerializable() const = 0;
 };
 
 template <class Archive>
 inline void load(Archive& ar, IRepPolicyRef& value) {
 	bool present = (value.getPtr());
-	ar >> present;
+	old_serializer(ar, present);
 	if (present) {
 		serializeReplicationPolicy(ar, value);
 	} else {
@@ -171,7 +84,7 @@ inline void load(Archive& ar, IRepPolicyRef& value) {
 template <class Archive>
 inline void save(Archive& ar, const IRepPolicyRef& value) {
 	bool present = (value.getPtr());
-	ar << present;
+	old_serializer(ar, present);
 	if (present) {
 		serializeReplicationPolicy(ar, (IRepPolicyRef&)value);
 	}
@@ -179,7 +92,8 @@ inline void save(Archive& ar, const IRepPolicyRef& value) {
 
 struct PolicyOne : IReplicationPolicy, public ReferenceCounted<PolicyOne> {
 	PolicyOne(){};
-	PolicyOne(const SPolicyOne&) {}
+	PolicyOne(const PolicyOne&) {}
+	PolicyOne(PolicyOne&&) {}
 	virtual ~PolicyOne(){};
 	virtual std::string name() const { return "One"; }
 	virtual std::string info() const { return "1"; }
@@ -190,13 +104,16 @@ struct PolicyOne : IReplicationPolicy, public ReferenceCounted<PolicyOne> {
 	                            std::vector<LocalityEntry>& results);
 	template <class Ar>
 	void serialize(Ar& ar) {}
+	virtual void deserializationDone() {}
 	virtual void attributeKeys(std::set<std::string>* set) const override { return; }
-	virtual SerializablePolicy toSerializable() const;
 };
 
 struct PolicyAcross : IReplicationPolicy, public ReferenceCounted<PolicyAcross> {
+	friend struct flat_buffers::serializable_traits<PolicyAcross*>;
+	PolicyAcross();
 	PolicyAcross(int count, std::string const& attribKey, IRepPolicyRef const policy);
-	PolicyAcross(const SPolicyAcross& serialized);
+	PolicyAcross(const PolicyAcross& other);
+	PolicyAcross(PolicyAcross&& other);
 	virtual ~PolicyAcross();
 	virtual std::string name() const { return "Across"; }
 	virtual std::string info() const { return format("%s^%d x ", _attribKey.c_str(), _count) + _policy->info(); }
@@ -212,6 +129,8 @@ struct PolicyAcross : IReplicationPolicy, public ReferenceCounted<PolicyAcross> 
 		serializeReplicationPolicy(ar, _policy);
 	}
 
+	virtual void deserializationDone() {}
+
 	static bool compareAddedResults(const std::pair<int, int>& rhs, const std::pair<int, int>& lhs) {
 		return (rhs.first < lhs.first) || (!(lhs.first < rhs.first) && (rhs.second < lhs.second));
 	}
@@ -220,8 +139,6 @@ struct PolicyAcross : IReplicationPolicy, public ReferenceCounted<PolicyAcross> 
 		set->insert(_attribKey);
 		_policy->attributeKeys(set);
 	}
-
-	virtual SerializablePolicy toSerializable() const;
 
 protected:
 	int _count;
@@ -237,11 +154,15 @@ protected:
 };
 
 struct PolicyAnd : IReplicationPolicy, public ReferenceCounted<PolicyAnd> {
+	friend struct flat_buffers::serializable_traits<PolicyAnd*>;
+	PolicyAnd() {}
 	PolicyAnd(std::vector<IRepPolicyRef> policies) : _policies(policies), _sortedPolicies(policies) {
 		// Sort the policy array
 		std::sort(_sortedPolicies.begin(), _sortedPolicies.end(), PolicyAnd::comparePolicy);
 	}
-	PolicyAnd(const SPolicyAnd& serialized);
+	PolicyAnd(const PolicyAnd& other) : _policies(other._policies), _sortedPolicies(other._sortedPolicies) {}
+	PolicyAnd(PolicyAnd&& other)
+	  : _policies(std::move(other._policies)), _sortedPolicies(std::move(other._sortedPolicies)) {}
 	virtual ~PolicyAnd() {}
 	virtual std::string name() const { return "And"; }
 	virtual std::string info() const {
@@ -293,13 +214,16 @@ struct PolicyAnd : IReplicationPolicy, public ReferenceCounted<PolicyAnd> {
 		}
 	}
 
+	virtual void deserializationDone() {
+		_sortedPolicies = _policies;
+		std::sort(_sortedPolicies.begin(), _sortedPolicies.end(), PolicyAnd::comparePolicy);
+	}
+
 	virtual void attributeKeys(std::set<std::string>* set) const override {
 		for (const IRepPolicyRef& r : _policies) {
 			r->attributeKeys(set);
 		}
 	}
-
-	virtual SerializablePolicy toSerializable() const;
 
 protected:
 	std::vector<IRepPolicyRef> _policies;
@@ -307,6 +231,124 @@ protected:
 };
 
 extern int testReplication();
+
+namespace flat_buffers {
+
+#define POLICY_CONSTRUCTION_WRAPPER(t)                                                                                 \
+	template <>                                                                                                        \
+	struct object_construction<t*> {                                                                                   \
+		using type = t*;                                                                                               \
+		type obj;                                                                                                      \
+                                                                                                                       \
+		object_construction() : obj(new t()) {}                                                                        \
+		object_construction(object_construction&& other) : obj(other.obj) { other.obj = nullptr; }                     \
+		object_construction(const object_construction& other) : obj() {}                                               \
+                                                                                                                       \
+		object_construction& operator=(object_construction&& other) {                                                  \
+			if (obj != nullptr) {                                                                                      \
+				delete obj;                                                                                            \
+			}                                                                                                          \
+			obj = other.obj;                                                                                           \
+			other.obj = nullptr;                                                                                       \
+			return *this;                                                                                              \
+		}                                                                                                              \
+                                                                                                                       \
+		object_construction& operator=(const object_construction& other) {                                             \
+			if (obj != nullptr) {                                                                                      \
+				delete obj;                                                                                            \
+			}                                                                                                          \
+			obj = new t(*other.obj);                                                                                   \
+			return *this;                                                                                              \
+		}                                                                                                              \
+                                                                                                                       \
+		type& get() { return obj; }                                                                                    \
+		const type& get() const { return obj; }                                                                        \
+	};
+
+POLICY_CONSTRUCTION_WRAPPER(PolicyOne);
+POLICY_CONSTRUCTION_WRAPPER(PolicyAcross);
+POLICY_CONSTRUCTION_WRAPPER(PolicyAnd);
+
+template <>
+struct FileIdentifierFor<IRepPolicyRef> {
+	static constexpr FileIdentifier value = 14695621;
+};
+
+template <>
+struct serializable_traits<PolicyOne*> : std::true_type {
+	template <class Archiver>
+	static void serialize(Archiver& ar, PolicyOne*& p) {}
+};
+
+template <>
+struct serializable_traits<PolicyAcross*> : std::true_type {
+	template <class Archiver>
+	static void serialize(Archiver& ar, PolicyAcross*& p) {
+		::serializer(ar, p->_count, p->_attribKey, p->_policy);
+	}
+};
+
+template <>
+struct serializable_traits<PolicyAnd*> : std::true_type {
+	template <class Archiver>
+	static void serialize(Archiver& ar, PolicyAnd*& p) {
+		::serializer(ar, p->_policies);
+	}
+};
+
+template <>
+struct serializable_traits<IRepPolicyRef> : std::true_type {
+	template <class Archiver>
+	static void serialize(Archiver& ar, IRepPolicyRef& policy) {
+		::serializer(ar, policy.changePtrUnsafe());
+	}
+};
+
+template <>
+struct union_like_traits<IReplicationPolicy*> : std::true_type {
+	using Member = IReplicationPolicy*;
+	using alternatives = pack<PolicyOne*, PolicyAcross*, PolicyAnd*>;
+
+	static uint8_t index(const Member& policy) {
+		if (policy->name() == "One") {
+			return 0;
+		} else if (policy->name() == "And") {
+			return 2;
+		} else {
+			return 1;
+		}
+	}
+
+	static bool empty(const Member& policy) { return policy == nullptr; }
+
+	template <int i>
+	static const index_t<i, alternatives>& get(IReplicationPolicy* const& member) {
+		if constexpr (i == 0) {
+			return reinterpret_cast<PolicyOne* const&>(member);
+		} else if constexpr (i == 1) {
+			return reinterpret_cast<PolicyAcross* const&>(member);
+		} else {
+			return reinterpret_cast<PolicyAnd* const&>(member);
+		}
+	}
+
+	template <int i, class Alternative>
+	static const void assign(Member& policy, const Alternative& impl) {
+		if (policy != nullptr) {
+			delete policy;
+		}
+		policy = impl;
+	}
+
+	template <class Context>
+	static void done(Member& policy, Context&) {
+		if (policy != nullptr) {
+			policy->deserializationDone();
+		}
+	}
+};
+
+} // namespace flat_buffers
 
 template <class Ar>
 void serializeReplicationPolicy(Ar& ar, IRepPolicyRef& policy) {
@@ -348,14 +390,7 @@ void serializeReplicationPolicy(Ar& ar, IRepPolicyRef& policy) {
 			}
 		}
 	} else {
-		if (Ar::isDeserializing) {
-			SerializablePolicy result;
-			new_serializer(ar, result);
-			policy = result.toPolicy();
-		} else {
-			auto sPolicy = policy ? policy->toSerializable() : SerializablePolicy();
-			new_serializer(ar, sPolicy);
-		}
+		new_serializer(ar, policy);
 	}
 }
 
