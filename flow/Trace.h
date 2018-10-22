@@ -56,6 +56,9 @@ enum Severity {
 
 class TraceEventFields {
 public:
+	constexpr static flat_buffers::FileIdentifier file_identifier = 4544911;
+	friend struct flat_buffers::serializable_traits<TraceEventFields>;
+
 	typedef std::pair<std::string, std::string> Field;
 	typedef std::vector<Field> FieldContainer;
 	typedef FieldContainer::const_iterator FieldIterator;
@@ -82,24 +85,36 @@ private:
 	size_t bytes;
 };
 
+namespace flat_buffers {
+
+template <>
+struct serializable_traits<TraceEventFields> : std::true_type {
+	template <class Archiver>
+	static void serialize(Archiver& ar, TraceEventFields& ev) {
+		flat_buffers::serializer(ar, ev.fields, ev.bytes);
+	}
+};
+
+} // namespace flat_buffers
+
 template <class Archive>
 inline void load(Archive& ar, TraceEventFields& value) {
 	uint32_t count;
-	ar >> count;
+	old_serializer(ar, count);
 
 	std::string k;
 	std::string v;
 	for (uint32_t i = 0; i < count; ++i) {
-		ar >> k >> v;
+		old_serializer(ar, k, v);
 		value.addField(k, v);
 	}
 }
 template <class Archive>
 inline void save(Archive& ar, const TraceEventFields& value) {
-	ar << (uint32_t)value.size();
+	old_serializer(ar, (uint32_t)value.size());
 
 	for (auto itr : value) {
-		ar << itr.first << itr.second;
+		old_serializer(ar, itr.first, itr.second);
 	}
 }
 

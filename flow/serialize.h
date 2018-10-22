@@ -37,14 +37,14 @@
 // replace the usage of is_binary_serializable.
 template <class T>
 struct is_binary_serializable {
-	enum { value = 0 };
+	static constexpr bool value = false;
 };
 
 #define BINARY_SERIALIZABLE(T)                                                                                         \
 	template <>                                                                                                        \
 	struct is_binary_serializable<T> {                                                                                 \
-		enum { value = 1 };                                                                                            \
-	};
+		static constexpr bool value = true;                                                                            \
+	}
 
 BINARY_SERIALIZABLE(int8_t);
 BINARY_SERIALIZABLE(uint8_t);
@@ -56,6 +56,9 @@ BINARY_SERIALIZABLE(int64_t);
 BINARY_SERIALIZABLE(uint64_t);
 BINARY_SERIALIZABLE(bool);
 BINARY_SERIALIZABLE(double);
+
+template <class T>
+constexpr bool is_binary_serializable_t = is_binary_serializable<T>::value;
 
 #define ENABLE_FLAT_BUFFERS
 extern const uint64_t oldProtocolVersion;
@@ -195,9 +198,13 @@ template <class Archive, class T, class Enable = void>
 class Serializer {
 public:
 	static void serialize(Archive& ar, T& t) {
-		CallArchiver ca(ar);
-		t.serialize(ca);
-		ASSERT(ar.protocolVersion() != 0);
+		if constexpr (is_binary_serializable_t<T>) {
+			ar.serializeBinaryItem(t);
+		} else {
+			CallArchiver ca(ar);
+			t.serialize(ca);
+			ASSERT(ar.protocolVersion() != 0);
+		}
 	}
 };
 
