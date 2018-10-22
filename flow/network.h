@@ -76,6 +76,7 @@ enum {
 class Void;
 
 struct NetworkAddress {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 232668;
 	// A NetworkAddress identifies a particular running server (i.e. a TCP endpoint).
 	uint32_t ip;
 	uint16_t port;

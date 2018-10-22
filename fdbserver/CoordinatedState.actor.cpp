@@ -23,6 +23,7 @@
 #include "Knobs.h"
 #include "flow/ActorCollection.h"
 #include "LeaderElection.h"
+#include <flow/actorcompiler.h>
 
 ACTOR Future<GenerationRegReadReply> waitAndSendRead(RequestStream<GenerationRegReadRequest> to,
                                                      GenerationRegReadRequest req) {
@@ -212,6 +213,7 @@ uint64_t CoordinatedState::getConflict() {
 }
 
 struct MovableValue {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 11058594;
 	enum MoveState { MaybeTo = 1, Active = 2, MovingFrom = 3 };
 
 	Value value;
@@ -224,8 +226,7 @@ struct MovableValue {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ASSERT(ar.protocolVersion() >= 0x0FDB00A2000D0001LL);
-		ar& value& mode& other;
+		serializer(ar, value, mode, other);
 	}
 };
 
@@ -246,7 +247,7 @@ struct MovableCoordinatedStateImpl {
 				// Old coordinated state, not a MovableValue
 				moveState.value = rawValue;
 			} else
-				r >> moveState;
+				serializer(r, moveState);
 		}
 		// SOMEDAY: If moveState.mode == MovingFrom, read (without locking) old state and assert that it corresponds
 		// with our state and is ReallyTo(coordinators)

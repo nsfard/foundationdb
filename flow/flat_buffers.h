@@ -121,7 +121,7 @@ struct FileIdentifierFor<unsigned short> {
 };
 
 template <>
-struct FileIdentifierFor<char> {
+struct FileIdentifierFor<signed char> {
 	constexpr static FileIdentifier value = 9;
 };
 
@@ -153,6 +153,15 @@ struct FileIdentifierFor<std::vector<T, Allocator>> {
 template <class CharT, class Traits, class Allocator>
 struct FileIdentifierFor<std::basic_string<CharT, Traits, Allocator>> {
 	constexpr static FileIdentifier value = 15694229;
+};
+
+template <class T>
+struct object_construction {
+	T obj;
+
+	T& get() { return obj; }
+	const T& get() const { return obj; }
+	T move() { return std::move(obj); }
 };
 
 // A smart pointer that knows whether or not to delete itself.
@@ -246,6 +255,9 @@ struct union_like_traits : std::false_type {
 
 	template <int i, class Alternative>
 	static const void assign(Member&, const Alternative&);
+
+	template <class Context>
+	static void done(Member&, Context&);
 };
 
 // TODO(anoyes): Implement things that are currently using scalar traits with
@@ -260,6 +272,9 @@ struct struct_like_traits : std::false_type {
 
 	template <int i>
 	static const void assign(Member&, const index_t<i, types>&);
+
+	template <class Context>
+	static void done(Member&, Context&);
 };
 
 template <class... Ts>
@@ -683,8 +698,8 @@ struct TraverseMessageTypes {
 private:
 	template <class T, class... Ts>
 	void union_helper(pack<T, Ts...>) {
-		T t;
-		(*this)(t);
+		object_construction<T> t;
+		(*this)(t.get());
 		union_helper(pack<Ts...>{});
 	}
 	void union_helper(pack<>) {}
@@ -917,9 +932,9 @@ struct LoadSaveHelper {
 		for_each_i<pack_size(types{})>([&](auto i_type) {
 			constexpr int i = decltype(i_type)::value;
 			using type = index_t<i, types>;
-			type t;
-			load_helper(t, current + struct_offset<i>(types{}), context);
-			StructTraits::template assign<i>(member, std::move(t));
+			object_construction<type> t;
+			load_helper(t.get(), current + struct_offset<i>(types{}), context);
+			StructTraits::template assign<i>(member, t.move());
 		});
 	}
 
@@ -1171,23 +1186,23 @@ template <class T>
 struct EnsureTable {
 	constexpr static flat_buffers::FileIdentifier file_identifier = FileIdentifierFor<T>::value;
 	EnsureTable() = default;
-	EnsureTable(const T& t) : t(t) {}
+	EnsureTable(const object_construction<T>& t) : t(t) {}
 	template <class Archive>
 	void serialize(Archive& ar) {
 		if constexpr (detail::expect_serialize_member<T>) {
 			if constexpr (serializable_traits<T>::value) {
-				serializable_traits<T>::serialize(ar, t);
+				serializable_traits<T>::serialize(ar, t.get());
 			} else {
-				t.serialize(ar);
+				t.get().serialize(ar);
 			}
 		} else {
-			flat_buffers::serializer(ar, t);
+			flat_buffers::serializer(ar, t.get());
 		}
 	}
-	T& asUnderlyingType() { return t; }
+	T& asUnderlyingType() { return t.get(); }
 
 private:
-	T t;
+	object_construction<T> t;
 };
 
 } // namespace flat_buffers

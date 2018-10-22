@@ -125,8 +125,8 @@ public:
 
 	// Client status updater
 	struct ClientStatusUpdater {
-		std::vector<BinaryWriter> inStatusQ;
-		std::vector<BinaryWriter> outStatusQ;
+		std::vector<std::string> inStatusQ;
+		std::vector<std::string> outStatusQ;
 		Future<Void> actor;
 	};
 	ClientStatusUpdater clientStatusUpdater;

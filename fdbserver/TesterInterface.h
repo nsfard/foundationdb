@@ -27,6 +27,8 @@
 #include "fdbclient/NativeAPI.h"
 
 struct WorkloadInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 11923145;
+
 	RequestStream<ReplyPromise<Void>> setup;
 	RequestStream<ReplyPromise<Void>> start;
 	RequestStream<ReplyPromise<bool>> check;
@@ -37,11 +39,13 @@ struct WorkloadInterface {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& setup& start& check& metrics& stop;
+		serializer(ar, setup, start, check, metrics, stop);
 	}
 };
 
 struct WorkloadRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 8310769;
+
 	Arena arena;
 	StringRef title;
 	StringRef database;
@@ -68,19 +72,21 @@ struct WorkloadRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& title& database& timeout& databasePingDelay& sharedRandomNumber& options& clientId& clientCount& reply&
-		    arena;
+		serializer(ar, title, database, timeout, databasePingDelay, sharedRandomNumber, options, clientId, clientCount,
+		           reply, arena);
 	}
 };
 
 struct TesterInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 11412183;
+
 	RequestStream<WorkloadRequest> recruitments;
 
 	UID id() const { return recruitments.getEndpoint().token; }
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& recruitments;
+		serializer(ar, recruitments);
 	}
 };
 

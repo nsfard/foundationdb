@@ -1977,9 +1977,11 @@ void Transaction::operator=(Transaction&& r) noexcept(true) {
 }
 
 void Transaction::flushTrLogsIfEnabled() {
-	if (trLogInfo && trLogInfo->logsAdded && trLogInfo->trLogWriter.getData()) {
+	if (trLogInfo && trLogInfo->logsAdded && !trLogInfo->eventsToLog.empty()) {
 		ASSERT(trLogInfo->flushed == false);
-		cx->clientStatusUpdater.inStatusQ.push_back(std::move(trLogInfo->trLogWriter));
+		BinaryWriter writer(IncludeVersion());
+		serialize_fake_root(writer, 98732756, trLogInfo->eventsToLog);
+		cx->clientStatusUpdater.inStatusQ.emplace_back(writer.toStringRef().toString());
 		trLogInfo->flushed = true;
 	}
 }

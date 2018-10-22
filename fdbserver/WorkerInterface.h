@@ -36,6 +36,8 @@
 	TraceEvent("DumpToken", recruited.id()).detail("Name", #name).detail("Token", name.getEndpoint().token)
 
 struct WorkerInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 9684050;
+
 	ClientWorkerInterface clientInterface;
 	LocalityData locality;
 	RequestStream<struct InitializeTLogRequest> tLog;
@@ -64,13 +66,15 @@ struct WorkerInterface {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& clientInterface& locality& tLog& master& masterProxy& resolver& storage& logRouter& debugQuery& debugPing&
-		    coordinationPing& waitFailure& setMetricsRate& eventLogRequest& traceBatchDumpRequest& testerInterface&
-		        diskStoreRequest;
+		serializer(ar, clientInterface, locality, tLog, master, masterProxy, resolver, storage, logRouter, debugQuery,
+		           debugPing, coordinationPing, waitFailure, setMetricsRate, eventLogRequest, traceBatchDumpRequest,
+		           testerInterface, diskStoreRequest);
 	}
 };
 
 struct InitializeTLogRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 4326331;
+
 	UID recruitmentID;
 	LogSystemConfig recoverFrom;
 	Version recoverAt;
@@ -91,12 +95,14 @@ struct InitializeTLogRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& recruitmentID& recoverFrom& recoverAt& knownCommittedVersion& epoch& recoverTags& allTags& storeType&
-		    remoteTag& locality& isPrimary& startVersion& logRouterTags& reply;
+		serializer(ar, recruitmentID, recoverFrom, recoverAt, knownCommittedVersion, epoch, recoverTags, allTags,
+		           storeType, remoteTag, locality, isPrimary, startVersion, logRouterTags, reply);
 	}
 };
 
 struct InitializeLogRouterRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 327649;
+
 	uint64_t recoveryCount;
 	Tag routerTag;
 	Version startVersion;
@@ -107,12 +113,14 @@ struct InitializeLogRouterRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& recoveryCount& routerTag& startVersion& tLogLocalities& tLogPolicy& locality& reply;
+		serializer(ar, recoveryCount, routerTag, startVersion, tLogLocalities, tLogPolicy, locality, reply);
 	}
 };
 
 // FIXME: Rename to InitializeMasterRequest, etc
 struct RecruitMasterRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 15637402;
+
 	Arena arena;
 	LifetimeToken lifetime;
 	bool forceRecovery;
@@ -120,12 +128,13 @@ struct RecruitMasterRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ASSERT(ar.protocolVersion() >= 0x0FDB00A200040001LL);
-		ar& lifetime& forceRecovery& reply& arena;
+		serializer(ar, lifetime, forceRecovery, reply, arena);
 	}
 };
 
 struct InitializeMasterProxyRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 7111763;
+
 	MasterInterface master;
 	uint64_t recoveryCount;
 	Version recoveryTransactionVersion;
@@ -134,11 +143,13 @@ struct InitializeMasterProxyRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& master& recoveryCount& recoveryTransactionVersion& firstProxy& reply;
+		serializer(ar, master, recoveryCount, recoveryTransactionVersion, firstProxy, reply);
 	}
 };
 
 struct InitializeResolverRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 12980817;
+
 	uint64_t recoveryCount;
 	int proxyCount;
 	int resolverCount;
@@ -146,21 +157,25 @@ struct InitializeResolverRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& recoveryCount& proxyCount& resolverCount& reply;
+		serializer(ar, recoveryCount, proxyCount, resolverCount, reply);
 	}
 };
 
 struct InitializeStorageReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 10457676;
+
 	StorageServerInterface interf;
 	Version addedVersion;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& interf& addedVersion;
+		serializer(ar, interf, addedVersion);
 	}
 };
 
 struct InitializeStorageRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 15320245;
+
 	Tag seedTag; //< If this server will be passed to seedShardServers, this will be a tag, otherwise it is invalidTag
 	UID reqId;
 	UID interfaceId;
@@ -169,30 +184,36 @@ struct InitializeStorageRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& seedTag& reqId& interfaceId& storeType& reply;
+		serializer(ar, seedTag, reqId, interfaceId, storeType, reply);
 	}
 };
 
 struct TraceBatchDumpRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 3726887;
+
 	ReplyPromise<Void> reply;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& reply;
+		serializer(ar, reply);
 	}
 };
 
 struct LoadedReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 8587159;
+
 	Standalone<StringRef> payload;
 	UID id;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& payload& id;
+		serializer(ar, payload, id);
 	}
 };
 
 struct LoadedPingRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 4281200;
+
 	UID id;
 	bool loadReply;
 	Standalone<StringRef> payload;
@@ -200,11 +221,13 @@ struct LoadedPingRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& id& loadReply& payload& reply;
+		serializer(ar, id, loadReply, payload, reply);
 	}
 };
 
 struct CoordinationPingMessage {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 7899904;
+
 	UID clusterControllerId;
 	int64_t timeStep;
 
@@ -213,11 +236,13 @@ struct CoordinationPingMessage {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& clusterControllerId& timeStep;
+		serializer(ar, clusterControllerId, timeStep);
 	}
 };
 
 struct SetMetricsLogRateRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 8020879;
+
 	uint32_t metricsLogsPerSecond;
 
 	SetMetricsLogRateRequest() : metricsLogsPerSecond(1) {}
@@ -225,11 +250,13 @@ struct SetMetricsLogRateRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& metricsLogsPerSecond;
+		serializer(ar, metricsLogsPerSecond);
 	}
 };
 
 struct EventLogRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 6919959;
+
 	bool getLastError;
 	Standalone<StringRef> eventName;
 	ReplyPromise<TraceEventFields> reply;
@@ -239,21 +266,25 @@ struct EventLogRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& getLastError& eventName& reply;
+		serializer(ar, getLastError, eventName, reply);
 	}
 };
 
 struct DebugQueryRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 16289983;
+
 	Standalone<StringRef> search;
 	ReplyPromise<Standalone<VectorRef<struct DebugEntryRef>>> reply;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& search& reply;
+		serializer(ar, search, reply);
 	}
 };
 
 struct DebugEntryRef {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 11990149;
+
 	double time;
 	NetworkAddress address;
 	StringRef context;
@@ -270,11 +301,13 @@ struct DebugEntryRef {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& time& address& context& version& mutation;
+		serializer(ar, time, address, context, version, mutation);
 	}
 };
 
 struct DiskStoreRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 1443476;
+
 	bool includePartialStores;
 	ReplyPromise<Standalone<VectorRef<UID>>> reply;
 
@@ -282,7 +315,7 @@ struct DiskStoreRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& includePartialStores& reply;
+		serializer(ar, includePartialStores, reply);
 	}
 };
 

@@ -22,6 +22,12 @@
 #ifndef FDBCLIENT_CLIENTLOGEVENTS_H
 #define FDBCLIENT_CLIENTLOGEVENTS_H
 
+#include <flow/Trace.h>
+#include <flow/serialize_variant.h>
+
+#include "FDBTypes.h"
+#include "MasterProxyInterface.h"
+
 namespace FdbClientLogEvents {
 typedef int EventType;
 enum {
@@ -41,14 +47,19 @@ struct Event {
 	Event() {}
 
 	template <typename Ar>
-	Ar& serialize(Ar& ar) {
-		return ar & type & startTs;
+	void serialize(Ar& ar) {
+		old_serializer(ar, type, startTs);
 	}
 
 	EventType type{ EVENTTYPEEND };
 	double startTs{ 0 };
 
 	void logEvent(std::string id) const {}
+
+	// this is a helper method to make new serialization a bit prettier
+	Event& base() { return *this; }
+
+	const Event& base() const { return *this; }
 };
 
 struct EventGetVersion : public Event {
@@ -56,11 +67,11 @@ struct EventGetVersion : public Event {
 	EventGetVersion() {}
 
 	template <typename Ar>
-	Ar& serialize(Ar& ar) {
-		if (!ar.isDeserializing)
-			return Event::serialize(ar) & latency;
-		else
-			return ar & latency;
+	void serialize(Ar& ar) {
+		if (!ar.isDeserializing) {
+			old_serializer(ar, base(), latency);
+		} else
+			old_serializer(ar, latency);
 	}
 
 	double latency;
@@ -76,11 +87,11 @@ struct EventGet : public Event {
 	EventGet() {}
 
 	template <typename Ar>
-	Ar& serialize(Ar& ar) {
-		if (!ar.isDeserializing)
-			return Event::serialize(ar) & latency & valueSize & key;
-		else
-			return ar & latency & valueSize & key;
+	void serialize(Ar& ar) {
+		if (!ar.isDeserializing) {
+			old_serializer(ar, Event::base(), latency, valueSize, key);
+		} else
+			serializer(ar, latency, valueSize, key);
 	}
 
 	double latency;
@@ -102,11 +113,11 @@ struct EventGetRange : public Event {
 	EventGetRange() {}
 
 	template <typename Ar>
-	Ar& serialize(Ar& ar) {
-		if (!ar.isDeserializing)
-			return Event::serialize(ar) & latency & rangeSize & startKey & endKey;
-		else
-			return ar & latency & rangeSize & startKey & endKey;
+	void serialize(Ar& ar) {
+		if (!ar.isDeserializing) {
+			old_serializer(ar, base(), latency, rangeSize, startKey, endKey);
+		} else
+			serializer(ar, latency, rangeSize, startKey, endKey);
 	}
 
 	double latency;
@@ -130,11 +141,12 @@ struct EventCommit : public Event {
 	EventCommit() {}
 
 	template <typename Ar>
-	Ar& serialize(Ar& ar) {
-		if (!ar.isDeserializing)
-			return Event::serialize(ar) & latency & numMutations & commitBytes & req.transaction & req.arena;
-		else
-			return ar & latency & numMutations & commitBytes & req.transaction & req.arena;
+	void serialize(Ar& ar) {
+		if (!ar.isDeserializing) {
+			serializer(ar, base(), latency, numMutations, commitBytes, req.transaction, req.arena);
+		} else {
+			serializer(ar, latency, numMutations, commitBytes, req.transaction, req.arena);
+		}
 	}
 
 	double latency;
@@ -178,11 +190,12 @@ struct EventGetError : public Event {
 	EventGetError() {}
 
 	template <typename Ar>
-	Ar& serialize(Ar& ar) {
-		if (!ar.isDeserializing)
-			return Event::serialize(ar) & errCode & key;
-		else
-			return ar & errCode & key;
+	void serialize(Ar& ar) {
+		if (!ar.isDeserializing) {
+			serializer(ar, base(), errCode, key);
+		} else {
+			serializer(ar, errCode, key);
+		}
 	}
 
 	int errCode;
@@ -202,11 +215,12 @@ struct EventGetRangeError : public Event {
 	EventGetRangeError() {}
 
 	template <typename Ar>
-	Ar& serialize(Ar& ar) {
-		if (!ar.isDeserializing)
-			return Event::serialize(ar) & errCode & startKey & endKey;
-		else
-			return ar & errCode & startKey & endKey;
+	void serialize(Ar& ar) {
+		if (!ar.isDeserializing) {
+			serializer(ar, base(), errCode, startKey, endKey);
+		} else {
+			serializer(ar, errCode, startKey, endKey);
+		}
 	}
 
 	int errCode;
@@ -228,11 +242,11 @@ struct EventCommitError : public Event {
 	EventCommitError() {}
 
 	template <typename Ar>
-	Ar& serialize(Ar& ar) {
-		if (!ar.isDeserializing)
-			return Event::serialize(ar) & errCode & req.transaction & req.arena;
-		else
-			return ar & errCode & req.transaction & req.arena;
+	void serialize(Ar& ar) {
+		if (!ar.isDeserializing) {
+			serializer(ar, base(), errCode, req.transaction, req.arena);
+		} else
+			serializer(ar, errCode, req.transaction, req.arena);
 	}
 
 	int errCode;
@@ -263,6 +277,122 @@ struct EventCommitError : public Event {
 		TraceEvent("TransactionTrace_CommitError").detail("TransactionID", id).detail("ErrCode", errCode);
 	}
 };
+
+struct SerializableEvent {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 14693020;
+	using variant = boost::variant<Void, EventGetVersion, EventGet, EventGetRange, EventCommit, EventGetError,
+	                               EventGetRangeError, EventCommitError>;
+
+	variant self;
+
+	SerializableEvent() {}
+
+	SerializableEvent(SerializableEvent&& other) : self(std::move(other.self)) {}
+	SerializableEvent(const SerializableEvent& other) : self(other.self) {}
+
+	SerializableEvent(variant&& v) : self(std::move(v)) {}
+	SerializableEvent(const variant& v) : self(v) {}
+
+	template <class Ar>
+	void serialize(Ar& ar) {
+		boost::apply_visitor([&ar](auto& val) { old_serializer(ar, val); }, self);
+	}
+};
+
 } // namespace FdbClientLogEvents
+
+namespace flat_buffers {
+
+template <>
+struct serializable_traits<FdbClientLogEvents::SerializableEvent> : std::true_type {
+	using type = FdbClientLogEvents::SerializableEvent;
+
+	template <class Ar>
+	static void serialize(Ar& ar, type& e) {
+		::serializer(ar, e.self);
+	}
+};
+
+template <>
+struct serializable_traits<FdbClientLogEvents::Event> : std::true_type {
+	using type = FdbClientLogEvents::Event;
+
+	template <class Ar>
+	static void serialize(Ar& ar, type& e) {
+		::serializer(ar, e.type, e.startTs);
+	}
+};
+
+template <>
+struct serializable_traits<FdbClientLogEvents::EventGetVersion> : std::true_type {
+	using type = FdbClientLogEvents::EventGetVersion;
+
+	template <class Ar>
+	static void serialize(Ar& ar, type& e) {
+		::serializer(ar, e.base(), e.latency);
+	}
+};
+
+template <>
+struct serializable_traits<FdbClientLogEvents::EventGet> : std::true_type {
+	using type = FdbClientLogEvents::EventGet;
+
+	template <class Ar>
+	static void serialize(Ar& ar, type& e) {
+		::serializer(ar, e.base(), e.latency, e.valueSize, e.key);
+	}
+};
+
+template <>
+struct serializable_traits<FdbClientLogEvents::EventGetRange> : std::true_type {
+	using type = FdbClientLogEvents::EventGetRange;
+
+	template <class Ar>
+	static void serialize(Ar& ar, type& e) {
+		::serializer(ar, e.base(), e.latency, e.rangeSize, e.startKey, e.endKey);
+	}
+};
+
+template <>
+struct serializable_traits<FdbClientLogEvents::EventCommit> : std::true_type {
+	using type = FdbClientLogEvents::EventCommit;
+
+	template <class Ar>
+	static void serialize(Ar& ar, type& e) {
+		::serializer(ar, e.base(), e.latency, e.numMutations, e.commitBytes, e.req.transaction, e.req.arena);
+	}
+};
+
+template <>
+struct serializable_traits<FdbClientLogEvents::EventGetError> : std::true_type {
+	using type = FdbClientLogEvents::EventGetError;
+
+	template <class Ar>
+	static void serialize(Ar& ar, type& e) {
+		::serializer(ar, e.base(), e.errCode, e.key);
+	}
+};
+
+template <>
+struct serializable_traits<FdbClientLogEvents::EventGetRangeError> : std::true_type {
+	using type = FdbClientLogEvents::EventGetRangeError;
+
+	template <class Ar>
+	static void serialize(Ar& ar, type& e) {
+		::serializer(ar, e.base(), e.errCode, e.startKey, e.endKey);
+	}
+};
+
+template <>
+struct serializable_traits<FdbClientLogEvents::EventCommitError> : std::true_type {
+	using type = FdbClientLogEvents::EventCommitError;
+
+	template <class Ar>
+	static void serialize(Ar& ar, type& e) {
+		::serializer(ar, e.base(), e.errCode, e.req.transaction, e.req.arena);
+	}
+};
+
+} // namespace flat_buffers
 
 #endif

@@ -21,6 +21,7 @@
 #include "SystemData.h"
 #include "StorageServerInterface.h"
 #include "flow/TDMetric.actor.h"
+#include <flow/serialize.h>
 
 const KeyRef systemKeysPrefix = LiteralStringRef("\xff");
 const KeyRangeRef normalKeys(KeyRef(), systemKeysPrefix);
@@ -47,13 +48,13 @@ const Value keyServersValue(const vector<UID>& src, const vector<UID>& dest) {
 	// src and dest are expected to be sorted
 	ASSERT(std::is_sorted(src.begin(), src.end()) && std::is_sorted(dest.begin(), dest.end()));
 	BinaryWriter wr((IncludeVersion()));
-	wr << src << dest;
+	serialize_fake_root(wr, 11899062, src, dest);
 	return wr.toStringRef();
 }
 void decodeKeyServersValue(const ValueRef& value, vector<UID>& src, vector<UID>& dest) {
 	if (value.size()) {
 		BinaryReader rd(value, IncludeVersion());
-		rd >> src >> dest;
+		serialize_fake_root(rd, 11899062, src, dest);
 	} else {
 		src.clear();
 		dest.clear();
@@ -63,8 +64,7 @@ void decodeKeyServersValue(const ValueRef& value, vector<UID>& src, vector<UID>&
 const Value logsValue(const vector<std::pair<UID, NetworkAddress>>& logs,
                       const vector<std::pair<UID, NetworkAddress>>& oldLogs) {
 	BinaryWriter wr(IncludeVersion());
-	wr << logs;
-	wr << oldLogs;
+	serialize_fake_root(wr, 6789277, logs, oldLogs);
 	return wr.toStringRef();
 }
 std::pair<vector<std::pair<UID, NetworkAddress>>, vector<std::pair<UID, NetworkAddress>>> decodeLogsValue(
@@ -72,8 +72,7 @@ std::pair<vector<std::pair<UID, NetworkAddress>>, vector<std::pair<UID, NetworkA
 	vector<std::pair<UID, NetworkAddress>> logs;
 	vector<std::pair<UID, NetworkAddress>> oldLogs;
 	BinaryReader reader(value, IncludeVersion());
-	reader >> logs;
-	reader >> oldLogs;
+	serialize_fake_root(reader, 6789277, logs, oldLogs);
 	return std::make_pair(logs, oldLogs);
 }
 
@@ -84,7 +83,7 @@ const ValueRef serverKeysTrue = LiteralStringRef("1"), // compatible with what w
 const Key serverKeysKey(UID serverID, const KeyRef& key) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(serverKeysPrefix);
-	wr << serverID;
+	old_serializer(wr, serverID);
 	wr.serializeBytes(LiteralStringRef("/"));
 	wr.serializeBytes(key);
 	return wr.toStringRef();
@@ -92,14 +91,14 @@ const Key serverKeysKey(UID serverID, const KeyRef& key) {
 const Key serverKeysPrefixFor(UID serverID) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(serverKeysPrefix);
-	wr << serverID;
+	serializer(wr, serverID);
 	wr.serializeBytes(LiteralStringRef("/"));
 	return wr.toStringRef();
 }
 UID serverKeysDecodeServer(const KeyRef& key) {
 	UID server_id;
 	BinaryReader rd(key.removePrefix(serverKeysPrefix), Unversioned());
-	rd >> server_id;
+	old_serializer(rd, server_id);
 	return server_id;
 }
 bool serverHasKey(ValueRef storedValue) {
@@ -118,28 +117,28 @@ const KeyRef serverTagHistoryPrefix = serverTagHistoryKeys.begin;
 const Key serverTagKeyFor(UID serverID) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(serverTagKeys.begin);
-	wr << serverID;
+	old_serializer(wr, serverID);
 	return wr.toStringRef();
 }
 
 const Key serverTagHistoryKeyFor(UID serverID) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(serverTagHistoryKeys.begin);
-	wr << serverID;
+	old_serializer(wr, serverID);
 	return addVersionStampAtEnd(wr.toStringRef());
 }
 
 const KeyRange serverTagHistoryRangeFor(UID serverID) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(serverTagHistoryKeys.begin);
-	wr << serverID;
+	old_serializer(wr, serverID);
 	return prefixRange(wr.toStringRef());
 }
 
 const KeyRange serverTagHistoryRangeBefore(UID serverID, Version version) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(serverTagHistoryKeys.begin);
-	wr << serverID;
+	old_serializer(wr, serverID);
 	version = bigEndian64(version);
 
 	Key versionStr = makeString(8);
@@ -151,14 +150,14 @@ const KeyRange serverTagHistoryRangeBefore(UID serverID, Version version) {
 
 const Value serverTagValue(Tag tag) {
 	BinaryWriter wr(IncludeVersion());
-	wr << tag;
+	serializer(wr, tag);
 	return wr.toStringRef();
 }
 
 UID decodeServerTagKey(KeyRef const& key) {
 	UID serverID;
 	BinaryReader rd(key.removePrefix(serverTagKeys.begin), Unversioned());
-	rd >> serverID;
+	old_serializer(rd, serverID);
 	return serverID;
 }
 
@@ -174,7 +173,7 @@ Tag decodeServerTagValue(ValueRef const& value) {
 	BinaryReader reader(value, IncludeVersion());
 	if (reader.protocolVersion() < 0x0FDB00A560010001LL) {
 		int16_t id;
-		reader >> id;
+		serializer(reader, id);
 		if (id == invalidTagOld) {
 			s = invalidTag;
 		} else if (id == txsTagOld) {
@@ -185,7 +184,7 @@ Tag decodeServerTagValue(ValueRef const& value) {
 			s.locality = tagLocalityUpgraded;
 		}
 	} else {
-		reader >> s;
+		serializer(reader, s);
 	}
 	return s;
 }
@@ -193,7 +192,7 @@ Tag decodeServerTagValue(ValueRef const& value) {
 const Key serverTagConflictKeyFor(Tag tag) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(serverTagConflictKeys.begin);
-	wr << tag;
+	serializer(wr, tag);
 	return wr.toStringRef();
 }
 
@@ -204,25 +203,25 @@ const KeyRef tagLocalityListPrefix = tagLocalityListKeys.begin;
 const Key tagLocalityListKeyFor(Optional<Value> dcID) {
 	BinaryWriter wr(AssumeVersion(oldProtocolVersion));
 	wr.serializeBytes(tagLocalityListKeys.begin);
-	wr << dcID;
+	serializer(wr, dcID);
 	return wr.toStringRef();
 }
 
 const Value tagLocalityListValue(int8_t const& tagLocality) {
 	BinaryWriter wr(IncludeVersion());
-	wr << tagLocality;
+	serializer(wr, tagLocality);
 	return wr.toStringRef();
 }
 Optional<Value> decodeTagLocalityListKey(KeyRef const& key) {
 	Optional<Value> dcID;
 	BinaryReader rd(key.removePrefix(tagLocalityListKeys.begin), AssumeVersion(oldProtocolVersion));
-	rd >> dcID;
+	old_serializer(rd, dcID);
 	return dcID;
 }
 int8_t decodeTagLocalityListValue(ValueRef const& value) {
 	int8_t s;
 	BinaryReader reader(value, IncludeVersion());
-	reader >> s;
+	serializer(reader, s);
 	return s;
 }
 
@@ -233,25 +232,25 @@ const KeyRef datacenterReplicasPrefix = datacenterReplicasKeys.begin;
 const Key datacenterReplicasKeyFor(Optional<Value> dcID) {
 	BinaryWriter wr(AssumeVersion(oldProtocolVersion));
 	wr.serializeBytes(datacenterReplicasKeys.begin);
-	wr << dcID;
+	serializer(wr, dcID);
 	return wr.toStringRef();
 }
 
 const Value datacenterReplicasValue(int const& replicas) {
 	BinaryWriter wr(IncludeVersion());
-	wr << replicas;
+	serializer(wr, replicas);
 	return wr.toStringRef();
 }
 Optional<Value> decodeDatacenterReplicasKey(KeyRef const& key) {
 	Optional<Value> dcID;
 	BinaryReader rd(key.removePrefix(datacenterReplicasKeys.begin), AssumeVersion(oldProtocolVersion));
-	rd >> dcID;
+	serialize_fake_root(rd, 13046283, dcID);
 	return dcID;
 }
 int decodeDatacenterReplicasValue(ValueRef const& value) {
 	int s;
 	BinaryReader reader(value, IncludeVersion());
-	reader >> s;
+	serialize_fake_root(reader, 15778837, s);
 	return s;
 }
 
@@ -264,25 +263,25 @@ const KeyRef serverListPrefix = serverListKeys.begin;
 const Key serverListKeyFor(UID serverID) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(serverListKeys.begin);
-	wr << serverID;
+	serializer(wr, serverID);
 	return wr.toStringRef();
 }
 
 const Value serverListValue(StorageServerInterface const& server) {
 	BinaryWriter wr(IncludeVersion());
-	wr << server;
+	serializer(wr, server);
 	return wr.toStringRef();
 }
 UID decodeServerListKey(KeyRef const& key) {
 	UID serverID;
 	BinaryReader rd(key.removePrefix(serverListKeys.begin), Unversioned());
-	rd >> serverID;
+	serializer(rd, serverID);
 	return serverID;
 }
 StorageServerInterface decodeServerListValue(ValueRef const& value) {
 	StorageServerInterface s;
 	BinaryReader reader(value, IncludeVersion());
-	reader >> s;
+	serializer(reader, s);
 	return s;
 }
 
@@ -296,34 +295,34 @@ const ValueRef processClassVersionValue = LiteralStringRef("1");
 const Key processClassKeyFor(StringRef processID) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(processClassKeys.begin);
-	wr << processID;
+	serializer(wr, processID);
 	return wr.toStringRef();
 }
 
 const Value processClassValue(ProcessClass const& processClass) {
 	BinaryWriter wr(IncludeVersion());
-	wr << processClass;
+	serializer(wr, processClass);
 	return wr.toStringRef();
 }
 
 Key decodeProcessClassKey(KeyRef const& key) {
 	StringRef processID;
 	BinaryReader rd(key.removePrefix(processClassKeys.begin), Unversioned());
-	rd >> processID;
+	serializer(rd, processID);
 	return processID;
 }
 
 UID decodeProcessClassKeyOld(KeyRef const& key) {
 	UID processID;
 	BinaryReader rd(key.removePrefix(processClassKeys.begin), Unversioned());
-	rd >> processID;
+	serializer(rd, processID);
 	return processID;
 }
 
 ProcessClass decodeProcessClassValue(ValueRef const& value) {
 	ProcessClass s;
 	BinaryReader reader(value, IncludeVersion());
-	reader >> s;
+	serializer(reader, s);
 	return s;
 }
 
@@ -357,27 +356,27 @@ const KeyRef workerListPrefix = workerListKeys.begin;
 const Key workerListKeyFor(StringRef processID) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(workerListKeys.begin);
-	wr << processID;
+	serializer(wr, processID);
 	return wr.toStringRef();
 }
 
 const Value workerListValue(ProcessData const& processData) {
 	BinaryWriter wr(IncludeVersion());
-	wr << processData;
+	serializer(wr, processData);
 	return wr.toStringRef();
 }
 
 Key decodeWorkerListKey(KeyRef const& key) {
 	StringRef processID;
 	BinaryReader rd(key.removePrefix(workerListKeys.begin), Unversioned());
-	rd >> processID;
+	serializer(rd, processID);
 	return processID;
 }
 
 ProcessData decodeWorkerListValue(ValueRef const& value) {
 	ProcessData s;
 	BinaryReader reader(value, IncludeVersion());
-	reader >> s;
+	serializer(reader, s);
 	return s;
 }
 
@@ -470,7 +469,7 @@ KeyRef logRangesDecodeKey(KeyRef key, UID* logUid) {
 // Returns the encoded key value comprised of the end key and destination path
 Key logRangesEncodeValue(KeyRef keyEnd, KeyRef destPath) {
 	BinaryWriter wr(IncludeVersion());
-	wr << std::make_pair(keyEnd, destPath);
+	serializer(wr, std::make_pair(keyEnd, destPath));
 	return wr.toStringRef();
 }
 
@@ -480,7 +479,7 @@ Key logRangesDecodeValue(KeyRef keyValue, Key* destKeyPrefix) {
 	std::pair<KeyRef, KeyRef> endPrefixCombo;
 
 	BinaryReader rd(keyValue, IncludeVersion());
-	rd >> endPrefixCombo;
+	serializer(rd, endPrefixCombo);
 
 	if (destKeyPrefix) {
 		*destKeyPrefix = endPrefixCombo.second;
@@ -494,7 +493,7 @@ Key logRangesDecodeValue(KeyRef keyValue, Key* destKeyPrefix) {
 Key uidPrefixKey(KeyRef keyPrefix, UID logUid) {
 	BinaryWriter bw(Unversioned());
 	bw.serializeBytes(keyPrefix);
-	bw << logUid;
+	serializer(bw, logUid);
 	return bw.toStringRef();
 }
 

@@ -30,6 +30,8 @@
 typedef uint64_t DBRecoveryCount;
 
 struct MasterInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 16191310;
+
 	LocalityData locality;
 	RequestStream<ReplyPromise<Void>> waitFailure;
 	RequestStream<struct GetRateInfoRequest> getRateInfo;
@@ -43,14 +45,14 @@ struct MasterInterface {
 	UID id() const { return changeCoordinators.getEndpoint().token; }
 	template <class Archive>
 	void serialize(Archive& ar) {
-		ASSERT(ar.protocolVersion() >= 0x0FDB00A200040001LL);
-		ar& locality& waitFailure& getRateInfo& tlogRejoin& changeCoordinators& getCommitVersion;
+		serializer(ar, locality, waitFailure, getRateInfo, tlogRejoin, changeCoordinators, getCommitVersion);
 	}
 
 	void initEndpoints() { getCommitVersion.getEndpoint(TaskProxyGetConsistentReadVersion); }
 };
 
 struct GetRateInfoRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 14801334;
 	UID requesterID;
 	int64_t totalReleasedTransactions;
 	ReplyPromise<struct GetRateInfoReply> reply;
@@ -61,21 +63,25 @@ struct GetRateInfoRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& requesterID& totalReleasedTransactions& reply;
+		serializer(ar, requesterID, totalReleasedTransactions, reply);
 	}
 };
 
 struct GetRateInfoReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 8238455;
+
 	double transactionRate;
 	double leaseDuration;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& transactionRate& leaseDuration;
+		serializer(ar, transactionRate, leaseDuration);
 	}
 };
 
 struct TLogRejoinRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 1852442;
+
 	TLogInterface myInterface;
 	ReplyPromise<bool> reply; // false means someone else registered, so we should re-register.  true means this master
 	                          // is recovered, so don't send again to the same master.
@@ -84,11 +90,13 @@ struct TLogRejoinRequest {
 	explicit TLogRejoinRequest(const TLogInterface& interf) : myInterface(interf) {}
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& myInterface& reply;
+		serializer(ar, myInterface, reply);
 	}
 };
 
 struct ChangeCoordinatorsRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 2076115;
+
 	Standalone<StringRef> newConnectionString;
 	ReplyPromise<Void> reply; // normally throws even on success!
 
@@ -97,11 +105,13 @@ struct ChangeCoordinatorsRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& newConnectionString& reply;
+		serializer(ar, newConnectionString, reply);
 	}
 };
 
 struct ResolverMoveRef {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 8750610;
+
 	KeyRangeRef range;
 	int dest;
 
@@ -116,11 +126,13 @@ struct ResolverMoveRef {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& range& dest;
+		serializer(ar, range, dest);
 	}
 };
 
 struct GetCommitVersionReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 5588101;
+
 	Standalone<VectorRef<ResolverMoveRef>> resolverChanges;
 	Version resolverChangesVersion;
 	Version version;
@@ -133,11 +145,13 @@ struct GetCommitVersionReply {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& resolverChanges& resolverChangesVersion& version& prevVersion& requestNum;
+		serializer(ar, resolverChanges, resolverChangesVersion, version, prevVersion, requestNum);
 	}
 };
 
 struct GetCommitVersionRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 5638093;
+
 	uint64_t requestNum;
 	uint64_t mostRecentProcessedRequestNum;
 	UID requestingProxy;
@@ -150,7 +164,7 @@ struct GetCommitVersionRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& requestNum& mostRecentProcessedRequestNum& requestingProxy& reply;
+		serializer(ar, requestNum, mostRecentProcessedRequestNum, requestingProxy, reply);
 	}
 };
 
@@ -168,7 +182,7 @@ struct LifetimeToken {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& ccID& count;
+		serializer(ar, ccID, count);
 	}
 };
 

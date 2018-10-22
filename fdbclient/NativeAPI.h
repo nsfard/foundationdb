@@ -185,7 +185,7 @@ struct TransactionLogInfo : public ReferenceCounted<TransactionLogInfo>, NonCopy
 	TransactionLogInfo() : logToDatabase(true) {}
 	TransactionLogInfo(std::string identifier) : logToDatabase(false), identifier(identifier) {}
 
-	BinaryWriter trLogWriter{ IncludeVersion() };
+	std::vector<FdbClientLogEvents::SerializableEvent> eventsToLog;
 	bool logsAdded{ false };
 	bool flushed{ false };
 
@@ -205,7 +205,7 @@ struct TransactionLogInfo : public ReferenceCounted<TransactionLogInfo>, NonCopy
 			logsAdded = true;
 			static_assert(std::is_base_of<FdbClientLogEvents::Event, T>::value,
 			              "Event should be derived class of FdbClientLogEvents::Event");
-			trLogWriter << event;
+			eventsToLog.emplace_back(event);
 		}
 	}
 
