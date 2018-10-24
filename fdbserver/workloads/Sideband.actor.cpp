@@ -24,6 +24,8 @@
 #include "flow/actorcompiler.h" // This must be the last #include.
 
 struct SidebandMessage {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 787999;
+
 	uint64_t key;
 	Version commitVersion;
 
@@ -32,18 +34,20 @@ struct SidebandMessage {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& key& commitVersion;
+		serializer(ar, key, commitVersion);
 	}
 };
 
 struct SidebandInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 512725;
+
 	RequestStream<SidebandMessage> updates;
 
 	UID id() const { return updates.getEndpoint().token; }
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& updates;
+		serializer(ar, updates);
 	}
 };
 
@@ -87,7 +91,7 @@ struct SidebandWorkload : TestWorkload {
 	ACTOR Future<Void> persistInterface(SidebandWorkload* self, Database cx) {
 		state Transaction tr(cx);
 		BinaryWriter wr(IncludeVersion());
-		wr << self->interf;
+		serializer(wr, self->interf);
 		state Standalone<StringRef> serializedInterface = wr.toStringRef();
 		loop {
 			try {
@@ -118,7 +122,7 @@ struct SidebandWorkload : TestWorkload {
 				}
 				SidebandInterface sideband;
 				BinaryReader br(val.get(), IncludeVersion());
-				br >> sideband;
+				serializer(br, sideband);
 				TraceEvent("SidebandFetched", sideband.id()).detail("ClientIdx", self->clientId);
 				return sideband;
 			} catch (Error& e) {
