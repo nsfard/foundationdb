@@ -135,6 +135,16 @@ struct FileIdentifierFor<bool> {
 	constexpr static FileIdentifier value = 11;
 };
 
+template <>
+struct FileIdentifierFor<float> {
+	constexpr static flat_buffers::FileIdentifier value = 7266212;
+};
+
+template <>
+struct FileIdentifierFor<double> {
+	constexpr static flat_buffers::FileIdentifier value = 9348150;
+};
+
 template <class K, class V, class Compare, class Allocator>
 struct FileIdentifierFor<std::map<K, V, Compare, Allocator>> {
 	constexpr static FileIdentifier value = FileIdentifierFor<std::pair<K, V>>::value;
@@ -158,6 +168,8 @@ struct FileIdentifierFor<std::basic_string<CharT, Traits, Allocator>> {
 template <class T>
 struct object_construction {
 	T obj;
+
+	object_construction() : obj() {}
 
 	T& get() { return obj; }
 	const T& get() const { return obj; }

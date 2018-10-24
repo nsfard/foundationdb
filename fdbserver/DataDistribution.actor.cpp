@@ -1966,7 +1966,9 @@ ACTOR Future<Void> storageRecruiter(DDTeamCollection* self, Reference<AsyncVar<s
 				rsr.excludeAddresses.push_back(it);
 			}
 
-			rsr.includeDCs = self->includedDCs;
+			rsr.includeDCs.clear();
+			rsr.includeDCs.reserve(self->includedDCs.size());
+			std::copy(self->includedDCs.begin(), self->includedDCs.end(), std::back_inserter(rsr.includeDCs));
 
 			TraceEvent(rsr.criticalRecruitment ? SevWarn : SevInfo, "DDRecruiting")
 			    .detail("State", "Sending request to CC")

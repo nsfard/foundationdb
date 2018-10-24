@@ -516,7 +516,7 @@ ACTOR Future<Standalone<CommitTransactionRef>> provisionalMaster(Reference<Maste
 			req.reply.send(Never()); // don't reply (clients always get commit_unknown_result)
 			auto t = &req.transaction;
 			if (t->read_snapshot == parent->lastEpochEnd && //< So no transactions can fall between the read snapshot
-			                                                //and the recovery transaction this (might) be merged with
+			                                                // and the recovery transaction this (might) be merged with
 			                                                // vvv and also the changes we will make in the recovery
 			                                                // transaction (most notably to lastEpochEndKey) BEFORE we
 			                                                // merge initialConfChanges won't conflict
@@ -698,8 +698,8 @@ ACTOR Future<Void> readTransactionSystemState(Reference<MasterData> self, Refere
 
 	self->txnStateLogAdapter->setNextVersion(
 	    oldLogSystem->getEnd()); //< FIXME: (1) the log adapter should do this automatically after recovery; (2) if we
-	                             //make KeyValueStoreMemory guarantee immediate reads, we should be able to get rid of
-	                             //the discardCommit() below and not need a writable log adapter
+	                             // make KeyValueStoreMemory guarantee immediate reads, we should be able to get rid of
+	                             // the discardCommit() below and not need a writable log adapter
 
 	TraceEvent("RTSSComplete", self->dbgid);
 
@@ -1297,7 +1297,8 @@ ACTOR Future<Void> masterCore(Reference<MasterData> self) {
 		// slightly (they assume there are no modifications to serverKeys in the same batch) The proxy also expects the
 		// lastEpochEndKey mutation to be first in the transaction
 		BinaryWriter bw(Unversioned());
-		tr.set(recoveryCommitRequest.arena, lastEpochEndKey, (bw << self->lastEpochEnd).toStringRef());
+		old_serializer(bw, self->lastEpochEnd);
+		tr.set(recoveryCommitRequest.arena, lastEpochEndKey, bw.toStringRef());
 	} else {
 		// Recruit and seed initial shard servers
 		// This transaction must be the very first one in the database (version 1)

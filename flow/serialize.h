@@ -46,14 +46,16 @@ struct is_binary_serializable {
 		static constexpr bool value = true;                                                                            \
 	}
 
-BINARY_SERIALIZABLE(int8_t);
-BINARY_SERIALIZABLE(uint8_t);
-BINARY_SERIALIZABLE(int16_t);
-BINARY_SERIALIZABLE(uint16_t);
-BINARY_SERIALIZABLE(int32_t);
-BINARY_SERIALIZABLE(uint32_t);
-BINARY_SERIALIZABLE(int64_t);
-BINARY_SERIALIZABLE(uint64_t);
+BINARY_SERIALIZABLE(signed char);
+BINARY_SERIALIZABLE(unsigned char);
+BINARY_SERIALIZABLE(short);
+BINARY_SERIALIZABLE(unsigned short);
+BINARY_SERIALIZABLE(int);
+BINARY_SERIALIZABLE(unsigned int);
+BINARY_SERIALIZABLE(long);
+BINARY_SERIALIZABLE(unsigned long);
+BINARY_SERIALIZABLE(long long);
+BINARY_SERIALIZABLE(unsigned long long);
 BINARY_SERIALIZABLE(bool);
 BINARY_SERIALIZABLE(double);
 
@@ -182,8 +184,9 @@ struct CallArchiver
 	}
 
 	uint64_t protocolVersion() { return ar.protocolVersion(); }
+	const uint8_t* arenaRead(int bytes) { return (const uint8_t*)ar.readBytes(bytes); }
 	void setProtocolVersion(uint64_t version) { return ar.setProtocolVersion(version); }
-	void serializeBytes(const void* data, int bytes) { ar.serializeBytes(data, bytes); }
+	void serializeBytes(const void* data, int bytes) { ar.serializeBytes(const_cast<void*>(data), bytes); }
 	const void* readBytes(int n) { return ar.readBytes(n); }
 
 	explicit CallArchiver(Archive& ar) : ar(ar) {}
@@ -194,7 +197,7 @@ struct CallArchiver
 	}
 };
 
-template <class Archive, class T, class Enable = void>
+template <class Archive, class T>
 class Serializer {
 public:
 	static void serialize(Archive& ar, T& t) {
@@ -377,14 +380,8 @@ void serialize_fake_root(Archive& ar, flat_buffers::FileIdentifier file_identifi
 #endif
 }
 
-template <class Archive, class T>
-class Serializer<Archive, T, typename std::enable_if<is_binary_serializable<T>::value>::type> {
-public:
-	static void serialize(Archive& ar, T& t) { ar.serializeBinaryItem(t); }
-};
-
 template <class Archive, class T1, class T2>
-class Serializer<Archive, std::pair<T1, T2>, void> {
+class Serializer<Archive, std::pair<T1, T2>> {
 public:
 	static void serialize(Archive& ar, std::pair<T1, T2>& p) { old_serializer(ar, p.first, p.second); }
 };

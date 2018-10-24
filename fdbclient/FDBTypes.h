@@ -103,11 +103,18 @@ static const Tag txsTag{ tagLocalitySpecial, 1 };
 enum { txsTagOld = -1, invalidTagOld = -100 };
 
 struct TagsAndMessage {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 14301369;
+
 	StringRef message;
 	std::vector<Tag> tags;
 
 	TagsAndMessage() {}
 	TagsAndMessage(StringRef message, const std::vector<Tag>& tags) : message(message), tags(tags) {}
+
+	template <class Archiver>
+	void serialize(Archiver& ar) {
+		serializer(ar, message, tags);
+	}
 };
 
 struct KeyRangeRef;
@@ -658,9 +665,9 @@ struct scalar_traits<AddressExclusion> : std::true_type {
 	// Context is an arbitrary type that is plumbed by reference throughout the
 	// load call tree.
 	template <class Context>
-	static void load(const uint8_t* buf, AddressExclusion& value, Context&) {
-		ip_traits::load<Context>(buf, value.ip);
-		port_traits::load<Context>(buf + ip_traits::size, value.port);
+	static void load(const uint8_t* buf, AddressExclusion& value, Context& context) {
+		ip_traits::load<Context>(buf, value.ip, context);
+		port_traits::load<Context>(buf + ip_traits::size, value.port, context);
 	}
 };
 

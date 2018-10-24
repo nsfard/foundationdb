@@ -532,7 +532,7 @@ void testSerializationSpeed() {
 			tstart = timer();
 
 			BinaryWriter wr(IncludeVersion());
-			wr << batch;
+			serializer(wr, batch);
 
 			bytes += wr.getLength();
 
@@ -547,7 +547,8 @@ void testSerializationSpeed() {
 				tstart = timer();
 				ArenaReader rd(arena, data, IncludeVersion());
 				VectorRef<CommitTransactionRef> batch2;
-				rd >> arena >> batch2;
+				serialize_fake_root(rd, flat_buffers::FileIdentifierFor<VectorRef<CommitTransactionRef>>::value, arena,
+				                    batch2);
 
 				deserialize += timer() - tstart;
 			}

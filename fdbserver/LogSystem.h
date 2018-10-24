@@ -788,7 +788,7 @@ struct LogPushData : NonCopyable {
 			int offset = wr.getLength();
 			old_serializer(wr, uint32_t(0), subseq, uint16_t(prev_tags.size()));
 			for (auto& tag : prev_tags) old_serializer(wr, tag);
-			wr << item;
+			old_serializer(wr, item);
 			*(uint32_t*)((uint8_t*)wr.getData() + offset) = wr.getLength() - offset - sizeof(uint32_t);
 		}
 		next_message_tags.clear();

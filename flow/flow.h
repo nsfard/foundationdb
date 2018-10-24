@@ -122,6 +122,9 @@ public:
 class Never {};
 
 template <class T>
+class TOptional;
+
+template <class T>
 class Optional {
 public:
 	static constexpr flat_buffers::FileIdentifier file_identifier =
@@ -135,6 +138,7 @@ public:
 	Optional(const U& t) : valid(true) {
 		new (&value) T(t);
 	}
+	Optional(const TOptional<T>&);
 
 	/* This conversion constructor was nice, but combined with the prior constructor it means that Optional<int> can be
 	converted to Optional<Optional<int>> in the wrong way (a non-present Optional<int> converts to a non-present
@@ -210,6 +214,52 @@ private:
 	typename std::aligned_storage<sizeof(T), __alignof(T)>::type value;
 	bool valid;
 };
+
+// This is a ugly wrapper type for Optional. The only thing it does is it
+// wraps an optional into a table when serialized with flatbuffers. This is
+// used for vector<Optional<T>> and similar scenarios.
+template <class T>
+class TOptional : public Optional<T> {
+public:
+	static constexpr flat_buffers::FileIdentifier file_identifier =
+	    (0x10 << 24) | flat_buffers::FileIdentifierFor<T>::value;
+
+	TOptional() : Optional<T>() {}
+	TOptional(const Optional<T>& o) : Optional<T>(o) {}
+
+	template <class U>
+	TOptional(const U& t) : Optional<T>(t) {}
+
+	TOptional(Arena& a, const Optional<T>& o) : Optional<T>(a, o) {}
+
+	TOptional(const TOptional<T>& o) : Optional<T>(static_cast<Optional<T> const&>(o)) {}
+	TOptional(TOptional<T>&& o) : Optional<T>(static_cast<Optional<T>&&>(o)) {}
+
+	TOptional& operator=(TOptional<T> const& o) {
+		static_cast<Optional<T>&>(*this) = static_cast<Optional<T> const&>(o);
+		return *this;
+	}
+
+	TOptional& operator=(TOptional<T>&& o) {
+		static_cast<Optional<T>&>(*this) = static_cast<Optional<T>&>(o);
+		return *this;
+	}
+
+	TOptional& operator=(Optional<T> const& o) { static_cast<Optional<T>&>(*this) = o; }
+
+	TOptional& operator=(Optional<T>&& o) { static_cast<Optional<T>&>(*this) = std::move(o); }
+
+	Optional<T>& toOptional() { return static_cast<Optional<T>&>(*this); }
+	const Optional<T>& toOptional() const { return static_cast<const Optional<T>&>(*this); }
+
+	template <class Archiver>
+	void serialize(Archiver& ar) {
+		serializer(ar, *static_cast<Optional<T>*>(this));
+	}
+};
+
+template <class T>
+Optional<T>::Optional(const TOptional<T>& o) : Optional(o.toOptional()) {}
 
 namespace flat_buffers {
 template <class T>

@@ -149,14 +149,14 @@ struct Profiler {
 	void enableSignal(bool enabled) { sigprocmask(enabled ? SIG_UNBLOCK : SIG_BLOCK, &profilingSignals, NULL); }
 
 	void phdr(struct dl_phdr_info* info) {
-		environmentInfoWriter << int64_t(1) << info->dlpi_addr
-		                      << StringRef((const uint8_t*)info->dlpi_name, strlen(info->dlpi_name));
+		old_serializer(environmentInfoWriter, int64_t(1), info->dlpi_addr,
+		               StringRef((const uint8_t*)info->dlpi_name, strlen(info->dlpi_name)));
 		for (int s = 0; s < info->dlpi_phnum; s++) {
 			auto const& h = info->dlpi_phdr[s];
-			environmentInfoWriter << int64_t(2) << h.p_type << h.p_flags // Word (uint32_t)
-			                      << h.p_offset // Off (uint64_t)
-			                      << h.p_vaddr << h.p_paddr // Addr (uint64_t)
-			                      << h.p_filesz << h.p_memsz << h.p_align; // XWord (uint64_t)
+			old_serializer(environmentInfoWriter, int64_t(2), h.p_type, h.p_flags, // Word (uint32_t)
+			               h.p_offset, // Off (uint64_t)
+			               h.p_vaddr, h.p_paddr, // Addr (uint64_t)
+			               h.p_filesz, h.p_memsz, h.p_align); // XWord (uint64_t)
 		}
 	}
 
@@ -173,10 +173,11 @@ struct Profiler {
 		// Write environment information header
 		// At the moment this consists of the output of dl_iterate_phdr, the locations of
 		// all shared objects loaded into this process (to help locate symbols) and the period in ns
-		self->environmentInfoWriter << int64_t(0x101) << int64_t(period * 1000);
+		old_serializer(self->environmentInfoWriter, int64_t(0x101), int64_t(period * 1000));
 		dl_iterate_phdr(phdr_callback, self);
-		self->environmentInfoWriter << int64_t(0);
-		while (self->environmentInfoWriter.getLength() % sizeof(void*)) self->environmentInfoWriter << uint8_t(0);
+		old_serializer(self->environmentInfoWriter, int64_t(0));
+		while (self->environmentInfoWriter.getLength() % sizeof(void*))
+			old_serializer(self->environmentInfoWriter, uint8_t(0));
 
 		self->output_buffer = new OutputBuffer;
 		state OutputBuffer* otherBuffer = new OutputBuffer;

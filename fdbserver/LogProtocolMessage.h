@@ -58,8 +58,8 @@ struct LogProtocolMessage {
 	template <class Ar>
 	void serialize(Ar& ar) {
 		uint8_t poly = MutationRef::Reserved_For_LogProtocolMessage;
-		ar& poly;
-		applyVersionStartingHere(ar, IncludeVersion());
+		old_serializer(ar, poly);
+		applyVersionStartingHere(ar, IncludeVersion(oldProtocolVersion));
 	}
 
 	static bool startsLogProtocolMessage(uint8_t byte) { return byte == MutationRef::Reserved_For_LogProtocolMessage; }

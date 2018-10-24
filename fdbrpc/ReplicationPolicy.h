@@ -390,7 +390,7 @@ void serializeReplicationPolicy(Ar& ar, IRepPolicyRef& policy) {
 			}
 		}
 	} else {
-		new_serializer(ar, policy);
+		serializer(ar, policy);
 	}
 }
 

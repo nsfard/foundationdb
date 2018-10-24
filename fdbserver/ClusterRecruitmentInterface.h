@@ -154,9 +154,9 @@ struct RecruitStorageReply {
 struct RecruitStorageRequest {
 	constexpr static flat_buffers::FileIdentifier file_identifier = 5698442;
 
-	std::vector<Optional<Standalone<StringRef>>> excludeMachines; //< Don't recruit any of these machines
+	std::vector<TOptional<Standalone<StringRef>>> excludeMachines; //< Don't recruit any of these machines
 	std::vector<AddressExclusion> excludeAddresses; //< Don't recruit any of these addresses
-	std::vector<Optional<Standalone<StringRef>>> includeDCs;
+	std::vector<TOptional<Standalone<StringRef>>> includeDCs;
 	bool criticalRecruitment; //< True if machine classes are to be ignored
 	ReplyPromise<RecruitStorageReply> reply;
 
@@ -244,7 +244,6 @@ struct RegisterMasterRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ASSERT(ar.protocolVersion() >= 0x0FDB00A200040001LL);
 		serializer(ar, dbName, id, mi, logSystemConfig, proxies, resolvers, recoveryCount, registrationCount,
 		           configuration, priorCommittedLogServers, recoveryState, recoveryStalled, reply);
 	}

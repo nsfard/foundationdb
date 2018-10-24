@@ -42,6 +42,25 @@ enum class RecoveryState {
 };
 BINARY_SERIALIZABLE(RecoveryState);
 
+namespace flat_buffers {
+
+template <>
+struct scalar_traits<RecoveryState> : std::true_type {
+	constexpr static size_t size = sizeof(std::underlying_type_t<RecoveryState>);
+	static void save(uint8_t* buf, const RecoveryState& s) {
+		std::copy(reinterpret_cast<const uint8_t*>(&s), reinterpret_cast<const uint8_t*>(&s) + size, buf);
+	}
+
+	// Context is an arbitrary type that is plumbed by reference throughout the
+	// load call tree.
+	template <class Context>
+	static void load(const uint8_t* buf, RecoveryState& s, Context&) {
+		std::copy(buf, buf + size, reinterpret_cast<uint8_t*>(&s));
+	}
+};
+
+}; // namespace flat_buffers
+
 namespace RecoveryStatus {
 enum RecoveryStatus {
 	reading_coordinated_state,

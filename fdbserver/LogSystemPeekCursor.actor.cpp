@@ -85,7 +85,7 @@ void ILogSystem::ServerPeekCursor::nextMessage() {
 		// A version
 		int32_t dummy;
 		Version ver;
-		rd >> dummy >> ver;
+		old_serializer(rd, dummy, ver);
 
 		//TraceEvent("SPC_ProcessSeq", randomID).detail("MessageVersion", messageVersion.toString()).detail("Ver", ver).detail("Tag", tag.toString());
 		// ASSERT( ver >= messageVersion.version );
@@ -102,10 +102,10 @@ void ILogSystem::ServerPeekCursor::nextMessage() {
 
 	uint16_t tagCount;
 	rd.checkpoint();
-	rd >> messageLength >> messageVersion.sub >> tagCount;
+	old_serializer(rd, messageLength, messageVersion.sub, tagCount);
 	tags.resize(tagCount);
 	for (int i = 0; i < tagCount; i++) {
-		rd >> tags[i];
+		old_serializer(rd, tags[i]);
 	}
 	rawLength = messageLength + sizeof(messageLength);
 	messageLength -= (sizeof(messageVersion.sub) + sizeof(tagCount) + tagCount * sizeof(Tag));
@@ -960,10 +960,11 @@ void ILogSystem::BufferedCursor::combineMessages() {
 	}
 	auto& msg = messages[messageIndex];
 	BinaryWriter messageWriter(Unversioned());
-	messageWriter << uint32_t(msg.message.size() + sizeof(uint32_t) + sizeof(uint16_t) + tags.size() * sizeof(Tag))
-	              << msg.version.sub << uint16_t(tags.size());
+	old_serializer(messageWriter,
+	               uint32_t(msg.message.size() + sizeof(uint32_t) + sizeof(uint16_t) + tags.size() * sizeof(Tag)),
+	               msg.version.sub, uint16_t(tags.size()));
 	for (auto& t : tags) {
-		messageWriter << t;
+		old_serializer(messageWriter, t);
 	}
 	messageWriter.serializeBytes(msg.message);
 	msg.arena = Arena();
