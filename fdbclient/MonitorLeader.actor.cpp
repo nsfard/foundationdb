@@ -24,6 +24,26 @@
 #include "flow/UnitTest.h"
 #include "fdbrpc/genericactors.actor.h"
 #include "fdbrpc/Platform.h"
+#include <flow/actorcompiler.h>
+
+ACTOR Future<Void> asyncDeserializeClusterInterface(Reference<AsyncVar<Value>> serializedInfo,
+                                                    Reference<AsyncVar<Optional<ClusterInterface>>> outKnownLeader) {
+	state Reference<AsyncVar<Optional<ClusterControllerClientInterface>>> knownLeader(
+	    new AsyncVar<Optional<ClusterControllerClientInterface>>{});
+	state Future<Void> deserializer = asyncDeserialize(serializedInfo, knownLeader);
+	loop {
+		choose {
+			when(wait(deserializer)) { UNSTOPPABLE_ASSERT(false); }
+			when(wait(knownLeader->onChange())) {
+				if (knownLeader->get().present()) {
+					outKnownLeader->set(knownLeader->get().get().clientInterface);
+				} else {
+					outKnownLeader->set(Optional<ClusterInterface>{});
+				}
+			}
+		}
+	}
+}
 
 std::pair<std::string, bool> ClusterConnectionFile::lookupClusterFileName(std::string const& filename) {
 	if (filename.length()) return std::make_pair(filename, false);

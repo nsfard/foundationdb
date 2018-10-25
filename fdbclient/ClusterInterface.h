@@ -29,7 +29,7 @@
 #include "ClientWorkerInterface.h"
 
 struct ClusterInterface {
-	constexpr static flat_buffers::FileIdentifier file_identifier = 13289427;
+	constexpr static flat_buffers::FileIdentifier file_identifier = 15888863;
 
 	RequestStream<struct OpenDatabaseRequest> openDatabase;
 	RequestStream<struct FailureMonitoringRequest> failureMonitoring;
@@ -55,6 +55,23 @@ struct ClusterInterface {
 	template <class Ar>
 	void serialize(Ar& ar) {
 		serializer(ar, openDatabase, failureMonitoring, databaseStatus, ping, getClientWorkers, forceRecovery);
+	}
+};
+
+struct ClusterControllerClientInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 14997695;
+	ClusterInterface clientInterface;
+
+	bool operator==(ClusterControllerClientInterface const& r) const {
+		return clientInterface.id() == r.clientInterface.id();
+	}
+	bool operator!=(ClusterControllerClientInterface const& r) const {
+		return clientInterface.id() != r.clientInterface.id();
+	}
+
+	template <class Ar>
+	void serialize(Ar& ar) {
+		serializer(ar, clientInterface);
 	}
 };
 
@@ -117,7 +134,7 @@ struct ClientVersionRef {
 };
 
 struct OpenDatabaseRequest {
-	constexpr static flat_buffers::FileIdentifier file_identifier = 10765504;
+	constexpr static flat_buffers::FileIdentifier file_identifier = 2799502;
 
 	// Sent by the native API to the cluster controller to open a database and track client
 	//   info changes.  Returns immediately if the current client info id is different from
