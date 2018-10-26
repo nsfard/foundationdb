@@ -106,13 +106,17 @@ struct TLogQueueEntryRef {
 
 } // namespace oldTLog
 
+namespace flat_buffers {
+
 template <>
-struct ::flat_buffers::serializable_traits<oldTLog::TLogQueueEntryRef> : std::true_type {
+struct serializable_traits<oldTLog::TLogQueueEntryRef> : std::true_type {
 	template <class Archiver>
 	static void serialize(Archiver& ar, oldTLog::TLogQueueEntryRef& self) {
-		serializer(ar, self.version, self.messages, self.tags, self.knownCommittedVersion, self.id);
+		::serializer(ar, self.version, self.messages, self.tags, self.knownCommittedVersion, self.id);
 	}
 };
+
+} // namespace flat_buffers
 
 namespace oldTLog {
 
