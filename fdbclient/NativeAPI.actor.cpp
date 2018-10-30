@@ -1980,7 +1980,7 @@ void Transaction::flushTrLogsIfEnabled() {
 	if (trLogInfo && trLogInfo->logsAdded && !trLogInfo->eventsToLog.empty()) {
 		ASSERT(trLogInfo->flushed == false);
 		BinaryWriter writer(IncludeVersion());
-		serialize_fake_root(writer, 98732756, trLogInfo->eventsToLog);
+		serialize_fake_root(writer, TransactionLogInfo::eventsToLogFileID, trLogInfo->eventsToLog);
 		cx->clientStatusUpdater.inStatusQ.emplace_back(writer.toStringRef().toString());
 		trLogInfo->flushed = true;
 	}

@@ -34,6 +34,8 @@ const KeyRef afterAllKeys = LiteralStringRef("\xff\xff\x00");
 const KeyRangeRef keyServersKeys(LiteralStringRef("\xff/keyServers/"), LiteralStringRef("\xff/keyServers0"));
 const KeyRef keyServersPrefix = keyServersKeys.begin;
 const KeyRef keyServersEnd = keyServersKeys.end;
+constexpr flat_buffers::FileIdentifier keyServersFileID = 11899062;
+
 const KeyRangeRef keyServersKeyServersKeys(LiteralStringRef("\xff/keyServers/\xff/keyServers/"),
                                            LiteralStringRef("\xff/keyServers/\xff/keyServers0"));
 const KeyRef keyServersKeyServersKey = keyServersKeyServersKeys.begin;
@@ -48,13 +50,13 @@ const Value keyServersValue(const vector<UID>& src, const vector<UID>& dest) {
 	// src and dest are expected to be sorted
 	ASSERT(std::is_sorted(src.begin(), src.end()) && std::is_sorted(dest.begin(), dest.end()));
 	BinaryWriter wr((IncludeVersion()));
-	serialize_fake_root(wr, 11899062, src, dest);
+	serialize_fake_root(wr, keyServersFileID, src, dest);
 	return wr.toStringRef();
 }
 void decodeKeyServersValue(const ValueRef& value, vector<UID>& src, vector<UID>& dest) {
 	if (value.size()) {
 		BinaryReader rd(value, IncludeVersion());
-		serialize_fake_root(rd, 11899062, src, dest);
+		serialize_fake_root(rd, keyServersFileID, src, dest);
 	} else {
 		src.clear();
 		dest.clear();
@@ -63,8 +65,9 @@ void decodeKeyServersValue(const ValueRef& value, vector<UID>& src, vector<UID>&
 
 const Value logsValue(const vector<std::pair<UID, NetworkAddress>>& logs,
                       const vector<std::pair<UID, NetworkAddress>>& oldLogs) {
+	constexpr static flat_buffers::FileIdentifier logsValueFileId = 6789277;
 	BinaryWriter wr(IncludeVersion());
-	serialize_fake_root(wr, 6789277, logs, oldLogs);
+	serialize_fake_root(wr, logsValueFileId, logs, oldLogs);
 	return wr.toStringRef();
 }
 std::pair<vector<std::pair<UID, NetworkAddress>>, vector<std::pair<UID, NetworkAddress>>> decodeLogsValue(

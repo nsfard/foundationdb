@@ -366,7 +366,7 @@ void ThreadSafeApi::setNetworkOption(FDBNetworkOptions::Option option, Optional<
 }
 
 void ThreadSafeApi::setupNetwork() {
-	::setupNetworkUsingOptions(transportId, false);
+	::setupNetworkUsingOptions(transportId, /* useMetrics */ false);
 }
 
 void ThreadSafeApi::runNetwork() {

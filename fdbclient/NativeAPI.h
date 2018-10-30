@@ -185,6 +185,7 @@ struct TransactionLogInfo : public ReferenceCounted<TransactionLogInfo>, NonCopy
 	TransactionLogInfo() : logToDatabase(true) {}
 	TransactionLogInfo(std::string identifier) : logToDatabase(false), identifier(identifier) {}
 
+	constexpr static flat_buffers::FileIdentifier eventsToLogFileID = 98732756;
 	std::vector<FdbClientLogEvents::SerializableEvent> eventsToLog;
 	bool logsAdded{ false };
 	bool flushed{ false };
