@@ -352,7 +352,7 @@ struct union_like_traits<IReplicationPolicy*> : std::true_type {
 
 template <class Ar>
 void serializeReplicationPolicy(Ar& ar, IRepPolicyRef& policy) {
-	if (ar.protocolVersion() < oldProtocolVersion) {
+	if (ar.protocolVersion() < newProtocolVersion) {
 		if (Ar::isDeserializing) {
 			StringRef name;
 			old_serializer(ar, name);
