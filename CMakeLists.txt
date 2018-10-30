@@ -416,7 +416,7 @@ configure_file(fdb.cluster.cmake ${CMAKE_CURRENT_BINARY_DIR}/fdb.cluster)
 # testing
 ################################################################################
 enable_testing()
-set(ENABLE_SERIALIZATION_TESTS OFF CAHE BOOL "Enable flatbuffer tests")
+set(ENABLE_SERIALIZATION_TESTS OFF CACHE BOOL "Enable flatbuffer tests")
 
 ################################################################################
 # Directory structure
