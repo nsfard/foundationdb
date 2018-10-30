@@ -261,7 +261,7 @@ struct scalar_traits<Error> : std::true_type {
 	static void load(const uint8_t* in, Error& out, Context& c) {
 		int code;
 		int_traits::load(in, code, c);
-		out = Error(code);
+		out = Error(code, nullptr);
 	}
 };
 
@@ -271,7 +271,7 @@ template <class Archive>
 inline void load(Archive& ar, Error& e) {
 	int code;
 	serializer(ar, code);
-	e = Error(code);
+	e = Error(code, nullptr);
 }
 
 template <class Archive>

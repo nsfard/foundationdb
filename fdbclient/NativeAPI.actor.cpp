@@ -2716,7 +2716,7 @@ Future<Void> Transaction::commitMutations() {
 		TraceEvent("ClientCommitError").error(e);
 		return Future<Void>(e);
 	} catch (...) {
-		Error e(error_code_unknown_error);
+		auto e = unknown_error();
 		TraceEvent("ClientCommitError").error(e);
 		return Future<Void>(e);
 	}
