@@ -343,7 +343,8 @@ void ThreadSafeTransaction::reset() {
 extern const char* getHGVersion();
 
 ThreadSafeApi::ThreadSafeApi()
-  : apiVersion(-1), clientVersion(format("%s,%s,%llx", FDB_VT_VERSION, getHGVersion(), g_network->protocolVersion())),
+  : apiVersion(-1),
+    clientVersion(format("%s,%s,%llx/%llx", FDB_VT_VERSION, getHGVersion(), oldProtocolVersion, newProtocolVersion)),
     transportId(0) {}
 
 void ThreadSafeApi::selectApiVersion(int apiVersion) {
