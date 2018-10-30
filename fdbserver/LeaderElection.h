@@ -24,6 +24,7 @@
 
 #include "fdbrpc/fdbrpc.h"
 #include "fdbrpc/Locality.h"
+#include <fdbclient/FDBTypes.h>
 
 class ServerCoordinators;
 
