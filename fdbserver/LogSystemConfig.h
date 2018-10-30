@@ -56,9 +56,32 @@ struct OptionalInterface {
 	}
 
 protected:
+	friend struct flat_buffers::serializable_traits<OptionalInterface<Interface>>;
 	UID ident;
 	Optional<Interface> iface;
 };
+
+namespace flat_buffers {
+
+template <class Interface>
+struct serializable_traits<OptionalInterface<Interface>> : std::true_type {
+	template <class Archiver>
+	static void serialize(Archiver& ar, OptionalInterface<Interface>& m) {
+		if constexpr (!Archiver::isDeserializing) {
+			if (m.iface.present()) {
+				m.ident = m.iface.get().id();
+			}
+		}
+		::serializer(ar, m.iface, m.ident);
+		if constexpr (Archiver::isDeserializing) {
+			if (m.iface.present()) {
+				m.ident = m.iface.get().id();
+			}
+		}
+	}
+};
+
+} // namespace flat_buffers
 
 struct TLogSet {
 	constexpr static flat_buffers::FileIdentifier file_identifier = 7851659;
