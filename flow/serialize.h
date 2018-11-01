@@ -366,7 +366,7 @@ void new_serialize_fake_root(Archive& ar, flat_buffers::FileIdentifier file_iden
 }
 
 template <class Archive, class... Items>
-void serialize_fake_root(Archive& ar, flat_buffers::FileIdentifier file_identifier, Items... items) {
+void serialize_fake_root(Archive& ar, flat_buffers::FileIdentifier file_identifier, Items&... items) {
 	static_assert(is_old_archive<Archive>);
 #ifndef ENABLE_FLAT_BUFFERS
 	GenericArchiver<0ul, Items...> archiver;
