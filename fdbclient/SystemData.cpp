@@ -94,7 +94,7 @@ const Key serverKeysKey(UID serverID, const KeyRef& key) {
 const Key serverKeysPrefixFor(UID serverID) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(serverKeysPrefix);
-	serializer(wr, serverID);
+	old_serializer(wr, serverID);
 	wr.serializeBytes(LiteralStringRef("/"));
 	return wr.toStringRef();
 }
@@ -195,7 +195,7 @@ Tag decodeServerTagValue(ValueRef const& value) {
 const Key serverTagConflictKeyFor(Tag tag) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(serverTagConflictKeys.begin);
-	serializer(wr, tag);
+	old_serializer(wr, tag);
 	return wr.toStringRef();
 }
 
@@ -235,7 +235,7 @@ const KeyRef datacenterReplicasPrefix = datacenterReplicasKeys.begin;
 const Key datacenterReplicasKeyFor(Optional<Value> dcID) {
 	BinaryWriter wr(AssumeVersion(oldProtocolVersion));
 	wr.serializeBytes(datacenterReplicasKeys.begin);
-	serializer(wr, dcID);
+	old_serializer(wr, dcID);
 	return wr.toStringRef();
 }
 
@@ -266,7 +266,7 @@ const KeyRef serverListPrefix = serverListKeys.begin;
 const Key serverListKeyFor(UID serverID) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(serverListKeys.begin);
-	serializer(wr, serverID);
+	old_serializer(wr, serverID);
 	return wr.toStringRef();
 }
 
