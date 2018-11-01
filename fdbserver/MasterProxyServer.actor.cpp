@@ -371,7 +371,7 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self, vector<CommitTransactionRe
 	}
 
 	/////// Phase 1: Pre-resolution processing (CPU bound except waiting for a version # which is separately pipelined
-	///and *should* be available by now (unless empty commit); ordered; currently atomic but could yield)
+	/// and *should* be available by now (unless empty commit); ordered; currently atomic but could yield)
 	TEST(self->latestLocalCommitBatchResolving.get() <
 	     localBatchNumber - 1); // Queuing pre-resolution commit processing
 	wait(self->latestLocalCommitBatchResolving.whenAtLeast(localBatchNumber - 1));
@@ -439,7 +439,7 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self, vector<CommitTransactionRe
 		g_traceBatch.addEvent("CommitDebug", debugID.get().first(), "MasterProxyServer.commitBatch.AfterResolution");
 
 	////// Phase 3: Post-resolution processing (CPU bound except for very rare situations; ordered; currently atomic but
-	///doesn't need to be)
+	/// doesn't need to be)
 	TEST(self->latestLocalCommitBatchLogging.get() < localBatchNumber - 1); // Queuing post-resolution commit processing
 	wait(self->latestLocalCommitBatchLogging.whenAtLeast(localBatchNumber - 1));
 	wait(yield());
@@ -751,8 +751,8 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self, vector<CommitTransactionRe
 			wr.serializeBytes(logRangeMutation.first);
 
 			// Write the log keys and version information
-			wr << (uint8_t)hashlittle(&v, sizeof(v), 0);
-			wr << bigEndian64(commitVersion);
+			old_serializer(wr, (uint8_t)hashlittle(&v, sizeof(v), 0));
+			old_serializer(wr, bigEndian64(commitVersion));
 
 			backupMutation.type = MutationRef::SetValue;
 			partBuffer = NULL;
@@ -769,7 +769,7 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self, vector<CommitTransactionRe
 				// Write the last part of the mutation to the serialization, if the buffer is not defined
 				if (!partBuffer) {
 					// Serialize the part to the writer
-					wr << bigEndian32(part);
+					old_serializer(wr, bigEndian32(part));
 
 					// Define the last buffer part
 					partBuffer = (uint32_t*)((char*)wr.getData() + wr.getLength() - sizeof(uint32_t));
@@ -788,10 +788,11 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self, vector<CommitTransactionRe
 
 				//				if (debugMutation("BackupProxyCommit", commitVersion, backupMutation)) {
 				//					TraceEvent("BackupProxyCommitTo", self->dbgid).detail("To",
-				//describe(tags)).detail("BackupMutation", backupMutation.toString()) 						.detail("BackupMutationSize",
-				//val.size()).detail("Version", commitVersion).detail("DestPath", printable(logRangeMutation.first))
-				//						.detail("PartIndex", part).detail("PartIndexEndian", bigEndian32(part)).detail("PartData",
-				//printable(backupMutation.param1));
+				// describe(tags)).detail("BackupMutation", backupMutation.toString())
+				// .detail("BackupMutationSize", val.size()).detail("Version", commitVersion).detail("DestPath",
+				// printable(logRangeMutation.first)) 						.detail("PartIndex",
+				// part).detail("PartIndexEndian",
+				// bigEndian32(part)).detail("PartData", printable(backupMutation.param1));
 				//				}
 			}
 		}
@@ -847,7 +848,7 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self, vector<CommitTransactionRe
 
 	//TraceEvent("ProxyPush", self->dbgid).detail("PrevVersion", prevVersion).detail("Version", commitVersion)
 	//	.detail("TransactionsSubmitted", trs.size()).detail("TransactionsCommitted", commitCount).detail("TxsPopTo",
-	//msg.popTo);
+	// msg.popTo);
 
 	if (prevVersion && commitVersion - prevVersion < SERVER_KNOBS->MAX_VERSIONS_IN_FLIGHT / 2)
 		debug_advanceMaxCommittedVersion(UID(), commitVersion);
@@ -880,7 +881,7 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self, vector<CommitTransactionRe
 	self->logSystem->pop(msg.popTo, txsTag);
 
 	/////// Phase 5: Replies (CPU bound; no particular order required, though ordered execution would be best for
-	///latency)
+	/// latency)
 	if (prevVersion && commitVersion - prevVersion < SERVER_KNOBS->MAX_VERSIONS_IN_FLIGHT / 2)
 		debug_advanceMinCommittedVersion(UID(), commitVersion);
 

@@ -73,11 +73,13 @@ struct OldTagMessagesRef {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& tag& messageOffsets;
+		serializer(ar, tag, messageOffsets);
 	}
 };
 
 struct TLogQueueEntryRef {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 12060715;
+
 	UID id;
 	Version version;
 	Version knownCommittedVersion;
@@ -92,15 +94,31 @@ struct TLogQueueEntryRef {
 	template <class Ar>
 	void serialize(Ar& ar) {
 		if (ar.protocolVersion() >= 0x0FDB00A460010001) {
-			ar& version& messages& tags& knownCommittedVersion& id;
+			serializer(ar, version, messages, tags, knownCommittedVersion, id);
 		} else if (ar.isDeserializing) {
-			ar& version& messages& tags;
+			serializer(ar, version, messages, tags);
 			knownCommittedVersion = 0;
 			id = UID();
 		}
 	}
 	size_t expectedSize() const { return messages.expectedSize() + tags.expectedSize(); }
 };
+
+} // namespace oldTLog
+
+namespace flat_buffers {
+
+template <>
+struct serializable_traits<oldTLog::TLogQueueEntryRef> : std::true_type {
+	template <class Archiver>
+	static void serialize(Archiver& ar, oldTLog::TLogQueueEntryRef& self) {
+		::serializer(ar, self.version, self.messages, self.tags, self.knownCommittedVersion, self.id);
+	}
+};
+
+} // namespace flat_buffers
+
+namespace oldTLog {
 
 typedef Standalone<TLogQueueEntryRef> TLogQueueEntry;
 
@@ -126,10 +144,9 @@ public:
 
 	void push(TLogQueueEntryRef const& qe) {
 		BinaryWriter wr(Unversioned()); // outer framing is not versioned
-		wr << uint32_t(0);
+		old_serializer(wr, uint32_t(0));
 		IncludeVersion().write(wr); // payload is versioned
-		wr << qe;
-		wr << uint8_t(1);
+		old_serializer(wr, qe, uint8_t(1));
 		*(uint32_t*)wr.getData() = wr.getLength() - sizeof(uint32_t) - sizeof(uint8_t);
 		auto loc = queue->push(wr.toStringRef());
 		//TraceEvent("TLogQueueVersionWritten", dbgid).detail("Size", wr.getLength() - sizeof(uint32_t) - sizeof(uint8_t)).detail("Loc", loc);
@@ -201,7 +218,7 @@ private:
 			if (e[payloadSize]) {
 				Arena a = e.arena();
 				ArenaReader ar(a, e.substr(0, payloadSize), IncludeVersion());
-				ar >> result;
+				old_serializer(ar, result);
 				self->version_location[result.version] = self->queue->getNextReadLocation();
 				return result;
 			}
@@ -232,17 +249,14 @@ static const KeyRange persistTagPoppedKeys = prefixRange(LiteralStringRef("TagPo
 static Key persistTagMessagesKey(UID id, OldTag tag, Version version) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(persistTagMessagesKeys.begin);
-	wr << id;
-	wr << tag;
-	wr << bigEndian64(version);
+	old_serializer(wr, id, tag, bigEndian64(version));
 	return wr.toStringRef();
 }
 
 static Key persistTagPoppedKey(UID id, OldTag tag) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(persistTagPoppedKeys.begin);
-	wr << id;
-	wr << tag;
+	old_serializer(wr, id, tag);
 	return wr.toStringRef();
 }
 
@@ -253,7 +267,7 @@ static Value persistTagPoppedValue(Version popped) {
 static OldTag decodeTagPoppedKey(KeyRef id, KeyRef key) {
 	OldTag s;
 	BinaryReader rd(key.removePrefix(persistTagPoppedKeys.begin).removePrefix(id), Unversioned());
-	rd >> s;
+	old_serializer(rd, s);
 	return s;
 }
 
@@ -557,7 +571,7 @@ ACTOR Future<Void> updatePersistentData(TLogData* self, Reference<LogData> logDa
 			BinaryWriter wr(Unversioned());
 
 			for (; msg != tag->value.version_messages.end() && msg->first == currentVersion; ++msg)
-				wr << msg->second.toStringRef();
+				old_serializer(wr, msg->second.toStringRef());
 
 			self->persistentData->set(
 			    KeyValueRef(persistTagMessagesKey(logData->logId, tag->key, currentVersion), wr.toStringRef()));
@@ -915,16 +929,16 @@ void peekMessagesFromMemory(Reference<LogData> self, TLogPeekRequest const& req,
 			}
 
 			currentVersion = it->first;
-			messages << int32_t(-1) << currentVersion;
+			old_serializer(messages, int32_t(-1), currentVersion);
 		}
 
 		BinaryReader rd(it->second.getLengthPtr(), it->second.expectedSize() + 4, Unversioned());
 		while (!rd.empty()) {
 			int32_t messageLength;
 			uint32_t subVersion;
-			rd >> messageLength >> subVersion;
+			old_serializer(rd, messageLength, subVersion);
 			messageLength += sizeof(uint16_t) + sizeof(Tag);
-			messages << messageLength << subVersion << uint16_t(1) << req.tag;
+			old_serializer(messages, messageLength, subVersion, uint16_t(1), req.tag);
 			messageLength -= (sizeof(subVersion) + sizeof(uint16_t) + sizeof(Tag));
 			messages.serializeBytes(rd.readBytes(messageLength), messageLength);
 		}
@@ -993,15 +1007,15 @@ ACTOR Future<Void> tLogPeekMessages(TLogData* self, TLogPeekRequest req, Referen
 
 		for (auto& kv : kvs) {
 			auto ver = decodeTagMessagesKey(kv.key);
-			messages << int32_t(-1) << ver;
+			old_serializer(messages, int32_t(-1), ver);
 
 			BinaryReader rd(kv.value, Unversioned());
 			while (!rd.empty()) {
 				int32_t messageLength;
 				uint32_t subVersion;
-				rd >> messageLength >> subVersion;
+				old_serializer(rd, messageLength, subVersion);
 				messageLength += sizeof(uint16_t) + sizeof(Tag);
-				messages << messageLength << subVersion << uint16_t(1) << req.tag;
+				old_serializer(messages, messageLength, subVersion, uint16_t(1), req.tag);
 				messageLength -= (sizeof(subVersion) + sizeof(uint16_t) + sizeof(Tag));
 				messages.serializeBytes(rd.readBytes(messageLength), messageLength);
 			}
@@ -1082,7 +1096,7 @@ ACTOR Future<Void> commitQueue(TLogData* self) {
 	state Reference<LogData> logData;
 
 	loop {
-		bool foundCount = 0;
+		int foundCount = 0;
 		for (auto it : self->id_data) {
 			if (!it.second->stopped) {
 				logData = it.second;
@@ -1091,7 +1105,7 @@ ACTOR Future<Void> commitQueue(TLogData* self) {
 		}
 
 		ASSERT(foundCount < 2);
-		if (!foundCount) {
+		if (foundCount > 0) {
 			wait(self->newLogData.onTrigger());
 			continue;
 		}
@@ -1444,7 +1458,7 @@ ACTOR Future<Void> restorePersistentState(TLogData* self, LocalityData locality)
 
 					//TraceEvent("TLogRecoveredQE", self->dbgid).detail("LogId", qe.id).detail("Ver", qe.version).detail("MessageBytes", qe.messages.size()).detail("Tags", qe.tags.size())
 					//	.detail("Tag0", qe.tags.size() ? qe.tags[0].tag : invalidTag).detail("Version",
-					//logData->version.get());
+					// logData->version.get());
 
 					if (logData) {
 						logData->knownCommittedVersion =

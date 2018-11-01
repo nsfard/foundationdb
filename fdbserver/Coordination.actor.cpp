@@ -29,11 +29,12 @@
 // This module implements coordinationServer() and the interfaces in CoordinationInterface.h
 
 struct GenerationRegVal {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 870066;
 	UniqueGeneration readGen, writeGen;
 	Optional<Value> val;
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& readGen& writeGen& val;
+		serializer(ar, readGen, writeGen, val);
 	}
 };
 

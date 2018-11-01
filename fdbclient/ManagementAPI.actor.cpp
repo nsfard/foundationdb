@@ -78,7 +78,7 @@ std::map<std::string, std::string> configForToken(std::string const& mode) {
 
 			StatusObject regionObj;
 			regionObj["regions"] = mv;
-			out[p + key] = BinaryWriter::toValue(regionObj, IncludeVersion()).toString();
+			out[p + key] = BinaryWriter::toValue(SerializedStatusObject{ regionObj }, IncludeVersion()).toString();
 		}
 
 		return out;
@@ -1103,7 +1103,7 @@ ACTOR Future<int> setDDMode(Database cx, int mode) {
 	state Transaction tr(cx);
 	state int oldMode = -1;
 	state BinaryWriter wr(Unversioned());
-	wr << mode;
+	old_serializer(wr, mode);
 
 	loop {
 		try {
@@ -1112,12 +1112,12 @@ ACTOR Future<int> setDDMode(Database cx, int mode) {
 				oldMode = 1;
 				if (old.present()) {
 					BinaryReader rd(old.get(), Unversioned());
-					rd >> oldMode;
+					old_serializer(rd, oldMode);
 				}
 			}
 			if (!mode) {
 				BinaryWriter wrMyOwner(Unversioned());
-				wrMyOwner << dataDistributionModeLock;
+				old_serializer(wrMyOwner, dataDistributionModeLock);
 				tr.set(moveKeysLockOwnerKey, wrMyOwner.toStringRef());
 			}
 

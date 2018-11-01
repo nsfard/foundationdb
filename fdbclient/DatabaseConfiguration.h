@@ -231,7 +231,7 @@ struct DatabaseConfiguration {
 	template <class Ar>
 	void serialize(Ar& ar) {
 		if (!ar.isDeserializing) makeConfigurationImmutable();
-		ar& rawConfiguration;
+		old_serializer(ar, rawConfiguration);
 		if (ar.isDeserializing) {
 			for (auto c = rawConfiguration.begin(); c != rawConfiguration.end(); ++c) setInternal(c->key, c->value);
 			setDefaultReplicationPolicy();
@@ -255,6 +255,39 @@ private:
 	bool setInternal(KeyRef key, ValueRef value);
 	void resetInternal();
 	void setDefaultReplicationPolicy();
+	friend struct flat_buffers::vector_like_traits<DatabaseConfiguration>;
 };
+
+namespace flat_buffers {
+
+template <>
+struct vector_like_traits<DatabaseConfiguration> : std::true_type {
+	using value_type = KeyValueRef;
+	using iterator = const KeyValueRef*;
+	using insert_iterator = KeyValueRef*;
+
+	static size_t num_entries(const DatabaseConfiguration& conf_) {
+		// There should never be a const DatabaseConfiguration object, so this
+		// is ok.
+		auto& conf = const_cast<DatabaseConfiguration&>(conf_);
+		conf.makeConfigurationImmutable();
+		return conf.rawConfiguration.size();
+	}
+	template <class Context>
+	static void reserve(DatabaseConfiguration& conf, size_t size, Context&) {
+		conf.rawConfiguration.resize(conf.rawConfiguration.arena(), size);
+	}
+
+	static insert_iterator insert(DatabaseConfiguration& conf) { return conf.rawConfiguration.begin(); }
+	static iterator begin(const DatabaseConfiguration& conf) { return conf.rawConfiguration.begin(); }
+	static void deserialization_done(DatabaseConfiguration& conf) {
+		for (auto c = conf.rawConfiguration.begin(); c != conf.rawConfiguration.end(); ++c) {
+			conf.setInternal(c->key, c->value);
+			conf.setDefaultReplicationPolicy();
+		}
+	}
+};
+
+} // namespace flat_buffers
 
 #endif

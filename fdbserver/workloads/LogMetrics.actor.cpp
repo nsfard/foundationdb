@@ -60,7 +60,7 @@ struct LogMetricsWorkload : TestWorkload {
 		}
 		// wait( waitForAll( replies ) );
 
-		br << rate;
+		old_serializer(br, rate);
 		loop {
 			state Transaction tr(cx);
 			try {

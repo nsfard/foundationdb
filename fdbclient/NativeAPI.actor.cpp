@@ -380,22 +380,22 @@ ACTOR static Future<Void> clientStatusUpdateActor(DatabaseContext* cx) {
 			for (auto& bw : cx->clientStatusUpdater.outStatusQ) {
 				int64_t value_size_limit =
 				    BUGGIFY ? g_random->randomInt(1e3, CLIENT_KNOBS->VALUE_SIZE_LIMIT) : CLIENT_KNOBS->VALUE_SIZE_LIMIT;
-				int num_chunks = (bw.getLength() + value_size_limit - 1) / value_size_limit;
+				int num_chunks = (bw.size() + value_size_limit - 1) / value_size_limit;
 				std::string random_id = g_random->randomAlphaNumeric(16);
 				for (int i = 0; i < num_chunks; i++) {
 					TrInfoChunk chunk;
 					BinaryWriter chunkBW(Unversioned());
-					chunkBW << bigEndian32(i + 1) << bigEndian32(num_chunks);
+					old_serializer(chunkBW, bigEndian32(i + 1), bigEndian32(num_chunks));
 					chunk.key = KeyRef(clientLatencyName + std::string(10, '\x00') + "/" + random_id + "/" +
 					                   chunkBW.toStringRef().toString() + "/" + std::string(4, '\x00'));
 					int32_t pos = littleEndian32(clientLatencyName.size());
 					memcpy(mutateString(chunk.key) + chunk.key.size() - sizeof(int32_t), &pos, sizeof(int32_t));
 					if (i == num_chunks - 1) {
-						chunk.value = ValueRef(static_cast<uint8_t*>(bw.getData()) + (i * value_size_limit),
-						                       bw.getLength() - (i * value_size_limit));
+						chunk.value = ValueRef(reinterpret_cast<const uint8_t*>(bw.c_str()) + (i * value_size_limit),
+						                       bw.size() - (i * value_size_limit));
 					} else {
-						chunk.value =
-						    ValueRef(static_cast<uint8_t*>(bw.getData()) + (i * value_size_limit), value_size_limit);
+						chunk.value = ValueRef(reinterpret_cast<const uint8_t*>(bw.c_str()) + (i * value_size_limit),
+						                       value_size_limit);
 					}
 					trChunksQ.push_back(std::move(chunk));
 				}
@@ -896,12 +896,31 @@ void setNetworkOption(FDBNetworkOptions::Option option, Optional<StringRef> valu
 		validateOptionValue(value, false);
 		networkOptions.slowTaskProfilingEnabled = true;
 		break;
+	case FDBNetworkOptions::NEW_PROTOCOL: {
+		bool newProtocol;
+		std::string arg;
+		if (value.present()) {
+			arg = value.get().toString();
+		} else {
+			arg = "on";
+		}
+		std::transform(arg.begin(), arg.end(), arg.begin(), [](char c) { return char(std::tolower(c)); });
+		if (arg == "on" || arg == "true" || arg == "1") {
+			newProtocol = true;
+		} else if (arg == "off" || arg == "false" || arg == "0") {
+			newProtocol = false;
+		} else {
+			throw invalid_option_value();
+		}
+		networkOptions.useNewProtocol = newProtocol;
+		break;
+	}
 	default:
 		break;
 	}
 }
 
-void setupNetwork(uint64_t transportId, bool useMetrics) {
+void setupNetwork(uint64_t protocolVersion, uint64_t transportId, bool useMetrics) {
 	if (g_network) throw network_already_setup();
 
 	g_random = new DeterministicRandom(platform::getRandomSeed());
@@ -910,7 +929,8 @@ void setupNetwork(uint64_t transportId, bool useMetrics) {
 	g_debug_random = trace_random;
 	if (!networkOptions.logClientInfo.present()) networkOptions.logClientInfo = true;
 
-	g_network = newNet2(NetworkAddress(), false, useMetrics || networkOptions.traceDirectory.present());
+	g_network =
+	    newNet2(NetworkAddress(), protocolVersion, false, useMetrics || networkOptions.traceDirectory.present());
 	FlowTransport::createInstance(transportId);
 	Net2FileSystem::newFileSystem();
 
@@ -919,6 +939,10 @@ void setupNetwork(uint64_t transportId, bool useMetrics) {
 #ifndef TLS_DISABLED
 	tlsOptions->register_network();
 #endif
+}
+
+void setupNetworkUsingOptions(uint64_t transportId, bool useMetrics) {
+	setupNetwork(networkOptions.useNewProtocol ? newProtocolVersion : oldProtocolVersion, transportId, useMetrics);
 }
 
 void runNetwork() {
@@ -1323,15 +1347,16 @@ ACTOR Future<Key> getKey(Database cx, KeySelector k, Future<Version> version, Tr
 				g_traceBatch.addEvent(
 				    "TransactionDebug", info.debugID.get().first(),
 				    "NativeAPI.getKey.Before"); //.detail("StartKey",
-				                                //printable(k.getKey())).detail("Offset",k.offset).detail("OrEqual",k.orEqual);
+				                                // printable(k.getKey())).detail("Offset",k.offset).detail("OrEqual",k.orEqual);
 			++cx->transactionPhysicalReads;
 			GetKeyReply reply = wait(loadBalance(ssi.second, &StorageServerInterface::getKey,
 			                                     GetKeyRequest(k, version.get()), TaskDefaultPromiseEndpoint, false,
 			                                     cx->enableLocalityLoadBalance ? &cx->queueModel : NULL));
 			if (info.debugID.present())
-				g_traceBatch.addEvent("TransactionDebug", info.debugID.get().first(),
-				                      "NativeAPI.getKey.After"); //.detail("NextKey",printable(reply.sel.key)).detail("Offset",
-				                                                 //reply.sel.offset).detail("OrEqual", k.orEqual);
+				g_traceBatch.addEvent(
+				    "TransactionDebug", info.debugID.get().first(),
+				    "NativeAPI.getKey.After"); //.detail("NextKey",printable(reply.sel.key)).detail("Offset",
+				                               // reply.sel.offset).detail("OrEqual", k.orEqual);
 			k = reply.sel;
 			if (!k.offset && k.orEqual) {
 				return k.getKey();
@@ -1952,9 +1977,11 @@ void Transaction::operator=(Transaction&& r) noexcept(true) {
 }
 
 void Transaction::flushTrLogsIfEnabled() {
-	if (trLogInfo && trLogInfo->logsAdded && trLogInfo->trLogWriter.getData()) {
+	if (trLogInfo && trLogInfo->logsAdded && !trLogInfo->eventsToLog.empty()) {
 		ASSERT(trLogInfo->flushed == false);
-		cx->clientStatusUpdater.inStatusQ.push_back(std::move(trLogInfo->trLogWriter));
+		BinaryWriter writer(IncludeVersion());
+		serialize_fake_root(writer, TransactionLogInfo::eventsToLogFileID, trLogInfo->eventsToLog);
+		cx->clientStatusUpdater.inStatusQ.emplace_back(writer.toStringRef().toString());
 		trLogInfo->flushed = true;
 	}
 }
@@ -2162,7 +2189,7 @@ void Transaction::addReadConflictRange(KeyRangeRef const& keys) {
 void Transaction::makeSelfConflicting() {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(LiteralStringRef("\xFF/SC/"));
-	wr << g_random->randomUniqueID();
+	old_serializer(wr, g_random->randomUniqueID());
 	auto r = singleKeyRange(wr.toStringRef(), tr.arena);
 	tr.transaction.read_conflict_ranges.push_back(tr.arena, r);
 	tr.transaction.write_conflict_ranges.push_back(tr.arena, r);
@@ -2689,7 +2716,7 @@ Future<Void> Transaction::commitMutations() {
 		TraceEvent("ClientCommitError").error(e);
 		return Future<Void>(e);
 	} catch (...) {
-		Error e(error_code_unknown_error);
+		auto e = unknown_error();
 		TraceEvent("ClientCommitError").error(e);
 		return Future<Void>(e);
 	}

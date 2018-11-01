@@ -155,8 +155,8 @@ struct StorefrontWorkload : TestWorkload {
 						updaters.clear();
 
 						// set value for the order
-						BinaryWriter wr(AssumeVersion(currentProtocolVersion));
-						wr << itemList;
+						BinaryWriter wr(AssumeVersion(oldProtocolVersion));
+						old_serializer(wr, itemList);
 						tr.set(orderKey, wr.toStringRef());
 
 						wait(tr.commit());
@@ -187,8 +187,8 @@ struct StorefrontWorkload : TestWorkload {
 			int orderIdx;
 			for (orderIdx = 0; orderIdx < values.size(); orderIdx++) {
 				vector<int> saved;
-				BinaryReader br(values[orderIdx].value, AssumeVersion(currentProtocolVersion));
-				br >> saved;
+				BinaryReader br(values[orderIdx].value, AssumeVersion(oldProtocolVersion));
+				old_serializer(br, saved);
 				for (int c = 0; c < saved.size(); c++) result[saved[c]]++;
 			}
 			fetched = values.size();
@@ -247,8 +247,8 @@ struct StorefrontWorkload : TestWorkload {
 					for (it = self->orders[id].begin(); it != self->orders[id].end(); it++) {
 						for (int i = 0; i < it->second; i++) itemList.push_back(it->first);
 					}
-					BinaryWriter wr(AssumeVersion(currentProtocolVersion));
-					wr << itemList;
+					BinaryWriter wr(AssumeVersion(oldProtocolVersion));
+					old_serializer(wr, itemList);
 					if (wr.toStringRef() != val.get().toString()) {
 						TraceEvent(SevError, "TestFailure")
 						    .detail("Reason", "OrderContentsMismatch")

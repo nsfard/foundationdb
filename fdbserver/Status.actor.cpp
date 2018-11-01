@@ -1805,7 +1805,7 @@ ACTOR Future<StatusReply> clusterGetStatus(
 		state StatusObject qos;
 		state StatusObject data_overlay;
 
-		statusObj["protocol_version"] = format("%llx", currentProtocolVersion);
+		statusObj["protocol_version"] = format("%llx", g_network->protocolVersion());
 		statusObj["connection_string"] = coordinators.ccf->getConnectionString().toString();
 
 		state Optional<DatabaseConfiguration> configuration;
@@ -1955,7 +1955,7 @@ ACTOR Future<StatusReply> clusterGetStatus(
 			statusObj["cluster_controller_timestamp"] = clusterTime;
 		}
 
-		return StatusReply(statusObj);
+		return StatusReply(SerializedStatusObject{ statusObj });
 	} catch (Error& e) {
 		TraceEvent(SevError, "StatusError").error(e);
 		throw;

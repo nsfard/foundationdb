@@ -1,0 +1,6 @@
+testTitle=FlatBuffers
+testName=UnitTests
+startDelay=false
+useDB=false
+maxTestCases=0
+testsMatching=flow/FlatBuffers

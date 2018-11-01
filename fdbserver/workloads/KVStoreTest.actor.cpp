@@ -247,6 +247,7 @@ ACTOR Future<Void> testKVStoreMain(KVStoreTestWorkload* workload, KVTest* ptest)
 	state std::deque<Future<Void>> reads;
 	state BinaryWriter wr(Unversioned());
 	state int64_t commitsStarted = 0;
+	state int i;
 	// test.store = makeDummyKeyValueStore();
 	state int extraBytes = workload->valueBytes - sizeof(test.lastSet);
 	ASSERT(extraBytes >= 0);
@@ -270,14 +271,13 @@ ACTOR Future<Void> testKVStoreMain(KVStoreTestWorkload* workload, KVTest* ptest)
 	}
 
 	if (workload->doSetup) {
-		wr << Version(0);
+		old_serializer(wr, Version(0));
 		wr.serializeBytes(extraValue, extraBytes);
 
 		printf("Building %d nodes: ", workload->nodeCount);
 		state double setupBegin = timer();
 		state double setupNow = now();
 		state Future<Void> lastCommit = Void();
-		state int i;
 		for (i = 0; i < workload->nodeCount; i++) {
 			test.store->set(KeyValueRef(test.makeKey(i), wr.toStringRef()));
 			if (!((i + 1) % 10000) || i + 1 == workload->nodeCount) {
@@ -299,7 +299,7 @@ ACTOR Future<Void> testKVStoreMain(KVStoreTestWorkload* workload, KVTest* ptest)
 				for (int s = 0; s < 1 / workload->commitFraction; s++) {
 					++test.lastSet;
 					BinaryWriter wr(Unversioned());
-					wr << test.lastSet;
+					old_serializer(wr, test.lastSet);
 					wr.serializeBytes(extraValue, extraBytes);
 					test.set(KeyValueRef(test.randomKey(), wr.toStringRef()));
 					++workload->sets;
@@ -329,7 +329,7 @@ ACTOR Future<Void> testKVStoreMain(KVStoreTestWorkload* workload, KVTest* ptest)
 					// Set
 					++test.lastSet;
 					BinaryWriter wr(Unversioned());
-					wr << test.lastSet;
+					old_serializer(wr, test.lastSet);
 					wr.serializeBytes(extraValue, extraBytes);
 					test.set(KeyValueRef(test.randomKey(), wr.toStringRef()));
 					++workload->sets;

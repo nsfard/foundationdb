@@ -27,6 +27,7 @@
 #include "CommitTransaction.h"
 
 struct MasterProxyInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 2117083;
 	enum { LocationAwareLoadBalance = 1 };
 
 	LocalityData locality;
@@ -52,8 +53,8 @@ struct MasterProxyInterface {
 
 	template <class Archive>
 	void serialize(Archive& ar) {
-		ar& locality& commit& getConsistentReadVersion& getKeyServersLocations& waitFailure& getStorageServerRejoinInfo&
-		    getRawCommittedVersion& txnState;
+		serializer(ar, locality, commit, getConsistentReadVersion, getKeyServersLocations, waitFailure,
+		           getStorageServerRejoinInfo, getRawCommittedVersion, txnState);
 	}
 
 	void initEndpoints() {
@@ -66,12 +67,13 @@ struct MasterProxyInterface {
 };
 
 struct CommitID {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 4725940;
 	Version version; // returns invalidVersion if transaction conflicts
 	uint16_t txnBatchId;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& version& txnBatchId;
+		serializer(ar, version, txnBatchId);
 	}
 
 	CommitID() : version(invalidVersion), txnBatchId(0) {}
@@ -79,6 +81,7 @@ struct CommitID {
 };
 
 struct CommitTransactionRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 15504126;
 	enum { FLAG_IS_LOCK_AWARE = 0x1, FLAG_FIRST_IN_BATCH = 0x2 };
 
 	bool isLockAware() const { return flags & FLAG_IS_LOCK_AWARE; }
@@ -94,7 +97,7 @@ struct CommitTransactionRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& transaction& reply& arena& flags& debugID;
+		serializer(ar, transaction, reply, arena, flags, debugID);
 	}
 };
 
@@ -111,16 +114,18 @@ static inline int getBytes(CommitTransactionRequest const& r) {
 }
 
 struct GetReadVersionReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 7362092;
 	Version version;
 	bool locked;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& version& locked;
+		serializer(ar, version, locked);
 	}
 };
 
 struct GetReadVersionRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 4463901;
 	enum {
 		PRIORITY_SYSTEM_IMMEDIATE =
 		    15 << 24, // Highest possible priority, always executed even if writes are otherwise blocked
@@ -146,21 +151,23 @@ struct GetReadVersionRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& transactionCount& flags& debugID& reply;
+		serializer(ar, transactionCount, flags, debugID, reply);
 	}
 };
 
 struct GetKeyServerLocationsReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 6014025;
 	Arena arena;
 	vector<pair<KeyRangeRef, vector<StorageServerInterface>>> results;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& results& arena;
+		serializer(ar, results, arena);
 	}
 };
 
 struct GetKeyServerLocationsRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 12903492;
 	Arena arena;
 	KeyRef begin;
 	Optional<KeyRef> end;
@@ -175,11 +182,12 @@ struct GetKeyServerLocationsRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& begin& end& limit& reverse& reply& arena;
+		serializer(ar, begin, end, limit, reverse, reply, arena);
 	}
 };
 
 struct GetRawCommittedVersionRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 1724694;
 	Optional<UID> debugID;
 	ReplyPromise<GetReadVersionReply> reply;
 
@@ -187,11 +195,12 @@ struct GetRawCommittedVersionRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& debugID& reply;
+		serializer(ar, debugID, reply);
 	}
 };
 
 struct GetStorageServerRejoinInfoReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 12925839;
 	Version version;
 	Tag tag;
 	Optional<Tag> newTag;
@@ -200,11 +209,12 @@ struct GetStorageServerRejoinInfoReply {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& version& tag& newTag& newLocality& history;
+		serializer(ar, version, tag, newTag, newLocality, history);
 	}
 };
 
 struct GetStorageServerRejoinInfoRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 5653785;
 	UID id;
 	Optional<Value> dcId;
 	ReplyPromise<GetStorageServerRejoinInfoReply> reply;
@@ -214,11 +224,12 @@ struct GetStorageServerRejoinInfoRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& id& dcId& reply;
+		serializer(ar, id, dcId, reply);
 	}
 };
 
 struct TxnStateRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 3504334;
 	Arena arena;
 	VectorRef<KeyValueRef> data;
 	Sequence sequence;
@@ -227,7 +238,7 @@ struct TxnStateRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& data& sequence& last& reply& arena;
+		serializer(ar, data, sequence, last, reply, arena);
 	}
 };
 

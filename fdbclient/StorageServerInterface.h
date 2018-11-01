@@ -29,6 +29,7 @@
 #include "fdbrpc/LoadBalance.actor.h"
 
 struct StorageServerInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 1111273;
 	enum { BUSY_ALLOWED = 0, BUSY_FORCE = 1, BUSY_LOCAL = 2 };
 
 	enum { LocationAwareLoadBalance = 1 };
@@ -63,10 +64,15 @@ struct StorageServerInterface {
 	void serialize(Ar& ar) {
 		// StorageServerInterface is persisted in the database and in the tLog's data structures, so changes here have
 		// to be versioned carefully!
-		ar& uniqueID& locality& getVersion& getValue& getKey& getKeyValues& getShardState& waitMetrics& splitMetrics&
-		    getPhysicalMetrics& waitFailure& getQueuingMetrics& getKeyValueStoreType;
-
-		if (ar.protocolVersion() >= 0x0FDB00A200090001LL) ar& watchValue;
+		if constexpr (only_old_protocol<Ar>) {
+			serializer(ar, uniqueID, locality, getVersion, getValue, getKey, getKeyValues, getShardState, waitMetrics,
+			           splitMetrics, getPhysicalMetrics, waitFailure, getQueuingMetrics, getKeyValueStoreType);
+			if (ar.protocolVersion() >= 0x0FDB00A200090001LL) serializer(ar, watchValue);
+		} else {
+			serializer(ar, uniqueID, locality, getVersion, getValue, getKey, getKeyValues, getShardState, waitMetrics,
+			           splitMetrics, getPhysicalMetrics, waitFailure, getQueuingMetrics, getKeyValueStoreType,
+			           watchValue);
+		}
 	}
 	bool operator==(StorageServerInterface const& s) const { return uniqueID == s.uniqueID; }
 	bool operator<(StorageServerInterface const& s) const { return uniqueID < s.uniqueID; }
@@ -90,6 +96,7 @@ struct ServerCacheInfo {
 };
 
 struct GetValueReply : public LoadBalancedReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 12028881;
 	Optional<Value> value;
 
 	GetValueReply() {}
@@ -97,11 +104,13 @@ struct GetValueReply : public LoadBalancedReply {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar&*(LoadBalancedReply*)this& value;
+		serializer(ar, *static_cast<LoadBalancedReply*>(this), value);
 	}
 };
 
 struct GetValueRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 8363286;
+
 	Key key;
 	Version version;
 	Optional<UID> debugID;
@@ -112,11 +121,13 @@ struct GetValueRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& key& version& debugID& reply;
+		serializer(ar, key, version, debugID, reply);
 	}
 };
 
 struct WatchValueRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 9659512;
+
 	Key key;
 	Optional<Value> value;
 	Version version;
@@ -129,11 +140,13 @@ struct WatchValueRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& key& value& version& debugID& reply;
+		serializer(ar, key, value, version, debugID, reply);
 	}
 };
 
 struct GetKeyValuesReply : public LoadBalancedReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 10565888;
+
 	Arena arena;
 	VectorRef<KeyValueRef> data;
 	Version version; // useful when latestVersion was requested
@@ -141,11 +154,13 @@ struct GetKeyValuesReply : public LoadBalancedReply {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar&*(LoadBalancedReply*)this& data& version& more& arena;
+		serializer(ar, *static_cast<LoadBalancedReply*>(this), data, version, more, arena);
 	}
 };
 
 struct GetKeyValuesRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 4041376;
+
 	Arena arena;
 	KeySelectorRef begin, end;
 	Version version; // or latestVersion
@@ -155,15 +170,17 @@ struct GetKeyValuesRequest {
 
 	GetKeyValuesRequest() {}
 	//	GetKeyValuesRequest(const KeySelectorRef& begin, const KeySelectorRef& end, Version version, int limit, int
-	//limitBytes, Optional<UID> debugID) : begin(begin), end(end), version(version), limit(limit),
-	//limitBytes(limitBytes) {}
+	// limitBytes, Optional<UID> debugID) : begin(begin), end(end), version(version), limit(limit),
+	// limitBytes(limitBytes) {}
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& begin& end& version& limit& limitBytes& debugID& reply& arena;
+		serializer(ar, begin, end, version, limit, limitBytes, debugID, reply, arena);
 	}
 };
 
 struct GetKeyReply : public LoadBalancedReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 47266;
+
 	KeySelector sel;
 
 	GetKeyReply() {}
@@ -171,11 +188,13 @@ struct GetKeyReply : public LoadBalancedReply {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar&*(LoadBalancedReply*)this& sel;
+		serializer(ar, *static_cast<LoadBalancedReply*>(this), sel);
 	}
 };
 
 struct GetKeyRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 8812209;
+
 	Arena arena;
 	KeySelectorRef sel;
 	Version version; // or latestVersion
@@ -186,11 +205,13 @@ struct GetKeyRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& sel& version& reply& arena;
+		serializer(ar, sel, version, reply, arena);
 	}
 };
 
 struct GetShardStateRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 15560798;
+
 	enum waitMode { NO_WAIT = 0, FETCHING = 1, READABLE = 2 };
 
 	KeyRange keys;
@@ -201,11 +222,13 @@ struct GetShardStateRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& keys& mode& reply;
+		serializer(ar, keys, mode, reply);
 	}
 };
 
 struct StorageMetrics {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 14813438;
+
 	int64_t bytes; // total storage
 	int64_t bytesPerKSecond; // network bandwidth (average over 10s)
 	int64_t iosPerKSecond;
@@ -237,7 +260,7 @@ struct StorageMetrics {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& bytes& bytesPerKSecond& iosPerKSecond;
+		serializer(ar, bytes, bytesPerKSecond, iosPerKSecond);
 	}
 
 	void negate() { operator*=(-1.0); }
@@ -274,6 +297,7 @@ struct StorageMetrics {
 };
 
 struct WaitMetricsRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 2636458;
 	// Waits for any of the given minimum or maximum metrics to be exceeded, and then returns the current values
 	// Send a reversed range for min, max to receive an immediate report
 	Arena arena;
@@ -287,21 +311,24 @@ struct WaitMetricsRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& keys& min& max& reply& arena;
+		serializer(ar, keys, min, max, reply, arena);
 	}
 };
 
 struct SplitMetricsReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 10456489;
 	Standalone<VectorRef<KeyRef>> splits;
 	StorageMetrics used;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& splits& used;
+		serializer(ar, splits, used);
 	}
 };
 
 struct SplitMetricsRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 9182023;
+
 	Arena arena;
 	KeyRangeRef keys;
 	StorageMetrics limits;
@@ -317,41 +344,48 @@ struct SplitMetricsRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& keys& limits& used& estimated& isLastShard& reply& arena;
+		serializer(ar, keys, limits, used, estimated, isLastShard, reply, arena);
 	}
 };
 
 struct GetPhysicalMetricsReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 10096600;
+
 	StorageMetrics load;
 	StorageMetrics free;
 	StorageMetrics capacity;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& load& free& capacity;
+		serializer(ar, load, free, capacity);
 	}
 };
 
 struct GetPhysicalMetricsRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 6896372;
+
 	ReplyPromise<GetPhysicalMetricsReply> reply;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& reply;
+		serializer(ar, reply);
 	}
 };
 
 struct StorageQueuingMetricsRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 12815316;
 	// SOMEDAY: Send threshold value to avoid polling faster than the information changes?
 	ReplyPromise<struct StorageQueuingMetricsReply> reply;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& reply;
+		serializer(ar, reply);
 	}
 };
 
 struct StorageQueuingMetricsReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 7934839;
+
 	double localTime;
 	int64_t instanceID; // changes if bytesDurable and bytesInput reset
 	int64_t bytesDurable, bytesInput;
@@ -360,7 +394,7 @@ struct StorageQueuingMetricsReply {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& localTime& instanceID& bytesDurable& bytesInput& v& storageBytes;
+		serializer(ar, localTime, instanceID, bytesDurable, bytesInput, v, storageBytes);
 	}
 };
 

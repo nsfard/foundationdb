@@ -119,6 +119,14 @@ bool PolicyOne::validate(std::vector<LocalityEntry> const& solutionSet, Locality
 	return ((solutionSet.size() > 0) && (fromServers->size() > 0));
 }
 
+PolicyAcross::PolicyAcross() {}
+
+PolicyAcross::PolicyAcross(const PolicyAcross& other)
+  : _count(other._count), _attribKey(other._attribKey), _policy(other._policy) {}
+
+PolicyAcross::PolicyAcross(PolicyAcross&& other)
+  : _count(other._count), _attribKey(std::move(other._attribKey)), _policy(std::move(other._policy)) {}
+
 PolicyAcross::PolicyAcross(int count, std::string const& attribKey, IRepPolicyRef const policy)
   : _count(count), _attribKey(attribKey), _policy(policy) {
 	return;

@@ -137,6 +137,7 @@ enum {
 	OPT_TRACE_LOG_GROUP,
 	OPT_MEMLIMIT,
 	OPT_LOCALITY,
+	OPT_NEW_PROTOCOL,
 
 	// DB constants
 	OPT_SOURCE_CLUSTER,
@@ -160,6 +161,7 @@ CSimpleOpt::SOption g_rgAgentOptions[] = {
 	{ OPT_TRACE_DIR, "--logdir", SO_REQ_SEP },
 	{ OPT_CRASHONERROR, "--crash", SO_NONE },
 	{ OPT_LOCALITY, "--locality_", SO_REQ_SEP },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 	{ OPT_MEMLIMIT, "-m", SO_REQ_SEP },
 	{ OPT_MEMLIMIT, "--memory", SO_REQ_SEP },
 	{ OPT_HELP, "-?", SO_NONE },
@@ -206,6 +208,7 @@ CSimpleOpt::SOption g_rgBackupStartOptions[] = {
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
 	{ OPT_KNOB, "--knob_", SO_REQ_SEP },
 	{ OPT_BLOB_CREDENTIALS, "--blob_credentials", SO_REQ_SEP },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -233,6 +236,7 @@ CSimpleOpt::SOption g_rgBackupStatusOptions[] = {
 	{ OPT_HELP, "-h", SO_NONE },
 	{ OPT_HELP, "--help", SO_NONE },
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -258,6 +262,7 @@ CSimpleOpt::SOption g_rgBackupAbortOptions[] = {
 	{ OPT_HELP, "-h", SO_NONE },
 	{ OPT_HELP, "--help", SO_NONE },
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -285,6 +290,7 @@ CSimpleOpt::SOption g_rgBackupDiscontinueOptions[] = {
 	{ OPT_HELP, "-h", SO_NONE },
 	{ OPT_HELP, "--help", SO_NONE },
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -312,6 +318,7 @@ CSimpleOpt::SOption g_rgBackupWaitOptions[] = {
 	{ OPT_HELP, "-h", SO_NONE },
 	{ OPT_HELP, "--help", SO_NONE },
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -335,6 +342,7 @@ CSimpleOpt::SOption g_rgBackupPauseOptions[] = {
 	{ OPT_HELP, "-h", SO_NONE },
 	{ OPT_HELP, "--help", SO_NONE },
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -368,6 +376,7 @@ CSimpleOpt::SOption g_rgBackupExpireOptions[] = {
 	{ OPT_EXPIRE_RESTORABLE_AFTER_DATETIME, "--restorable_after_timestamp", SO_REQ_SEP },
 	{ OPT_EXPIRE_BEFORE_VERSION, "--expire_before_version", SO_REQ_SEP },
 	{ OPT_EXPIRE_BEFORE_DATETIME, "--expire_before_timestamp", SO_REQ_SEP },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -393,6 +402,7 @@ CSimpleOpt::SOption g_rgBackupDeleteOptions[] = {
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
 	{ OPT_BLOB_CREDENTIALS, "--blob_credentials", SO_REQ_SEP },
 	{ OPT_KNOB, "--knob_", SO_REQ_SEP },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -422,6 +432,7 @@ CSimpleOpt::SOption g_rgBackupDescribeOptions[] = {
 	{ OPT_KNOB, "--knob_", SO_REQ_SEP },
 	{ OPT_DESCRIBE_DEEP, "--deep", SO_NONE },
 	{ OPT_DESCRIBE_TIMESTAMPS, "--version_timestamps", SO_NONE },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -447,6 +458,7 @@ CSimpleOpt::SOption g_rgBackupListOptions[] = {
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
 	{ OPT_BLOB_CREDENTIALS, "--blob_credentials", SO_REQ_SEP },
 	{ OPT_KNOB, "--knob_", SO_REQ_SEP },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -484,6 +496,7 @@ CSimpleOpt::SOption g_rgRestoreOptions[] = {
 	{ OPT_HELP, "--help", SO_NONE },
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
 	{ OPT_BLOB_CREDENTIALS, "--blob_credentials", SO_REQ_SEP },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -512,6 +525,7 @@ CSimpleOpt::SOption g_rgDBAgentOptions[] = {
 	{ OPT_HELP, "-h", SO_NONE },
 	{ OPT_HELP, "--help", SO_NONE },
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -541,6 +555,7 @@ CSimpleOpt::SOption g_rgDBStartOptions[] = {
 	{ OPT_HELP, "-h", SO_NONE },
 	{ OPT_HELP, "--help", SO_NONE },
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -570,6 +585,7 @@ CSimpleOpt::SOption g_rgDBStatusOptions[] = {
 	{ OPT_HELP, "-h", SO_NONE },
 	{ OPT_HELP, "--help", SO_NONE },
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -597,6 +613,7 @@ CSimpleOpt::SOption g_rgDBSwitchOptions[] = {
 	{ OPT_HELP, "-h", SO_NONE },
 	{ OPT_HELP, "--help", SO_NONE },
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -625,6 +642,7 @@ CSimpleOpt::SOption g_rgDBAbortOptions[] = {
 	{ OPT_HELP, "-h", SO_NONE },
 	{ OPT_HELP, "--help", SO_NONE },
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -650,6 +668,7 @@ CSimpleOpt::SOption g_rgDBPauseOptions[] = {
 	{ OPT_HELP, "-h", SO_NONE },
 	{ OPT_HELP, "--help", SO_NONE },
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
+	{ OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 	SO_END_OF_OPTIONS
 };
@@ -677,7 +696,8 @@ void parentWatcher(void* parentHandle) {
 static void printVersion() {
 	printf("FoundationDB " FDB_VT_PACKAGE_NAME " (v" FDB_VT_VERSION ")\n");
 	printf("source version %s\n", getHGVersion());
-	printf("protocol %llx\n", (long long)currentProtocolVersion);
+	printf("old protocol %llx\n", (long long)oldProtocolVersion);
+	printf("new protocol %llx\n", (long long)newProtocolVersion);
 }
 
 const char* BlobCredentialInfo =
@@ -2269,6 +2289,7 @@ int main(int argc, char* argv[]) {
 		uint64_t memLimit = 8LL << 30;
 		Optional<uint64_t> ti;
 		std::vector<std::string> blobCredentials;
+		bool newProtocol = false;
 
 		if (argc == 1) {
 			printUsage(programExe, false);
@@ -2367,6 +2388,20 @@ int main(int argc, char* argv[]) {
 				syn = syn.substr(11);
 				std::transform(syn.begin(), syn.end(), syn.begin(), ::tolower);
 				localities.set(Standalone<StringRef>(syn), Standalone<StringRef>(std::string(args->OptionArg())));
+				break;
+			}
+			case OPT_NEW_PROTOCOL: {
+				std::string arg = args->OptionArg();
+				std::transform(arg.begin(), arg.end(), arg.begin(), [](char c) { return char(std::tolower(c)); });
+				if (arg == "on" || arg == "true" || arg == "1") {
+					newProtocol = true;
+				} else if (arg == "off" || arg == "false" || arg == "0") {
+					newProtocol = false;
+				} else {
+					fprintf(stderr, "Unknown parameter \"%s\" for --new-protocol - use \"on\" or \"off\"\n",
+					        arg.c_str());
+					return FDB_EXIT_ABORT;
+				}
 				break;
 			}
 			case OPT_EXPIRE_BEFORE_DATETIME:
@@ -2648,7 +2683,7 @@ int main(int argc, char* argv[]) {
 		Reference<IBackupContainer> c;
 
 		try {
-			setupNetwork(0, true);
+			setupNetwork(newProtocol ? newProtocolVersion : oldProtocolVersion, 0, true);
 		} catch (Error& e) {
 			fprintf(stderr, "ERROR: %s\n", e.what());
 			return FDB_EXIT_ERROR;

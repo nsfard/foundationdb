@@ -52,6 +52,7 @@ struct NetworkOptions {
 	Optional<bool> logClientInfo;
 	Standalone<VectorRef<ClientVersionRef>> supportedVersions;
 	bool slowTaskProfilingEnabled;
+	bool useNewProtocol = false;
 
 	// The default values, TRACE_DEFAULT_ROLL_SIZE and TRACE_DEFAULT_MAX_LOGS_SIZE are located in Trace.h.
 	NetworkOptions()
@@ -81,7 +82,8 @@ private:
 void setNetworkOption(FDBNetworkOptions::Option option, Optional<StringRef> value = Optional<StringRef>());
 
 // Configures the global networking machinery
-void setupNetwork(uint64_t transportId = 0, bool useMetrics = false);
+void setupNetwork(uint64_t protocolVersion, uint64_t transportId, bool useMetrics);
+void setupNetworkUsingOptions(uint64_t transportId, bool useMetrics);
 
 // This call blocks while the network is running.  To use the API in a single-threaded
 //  environment, the calling program must have ACTORs already launched that are waiting
@@ -183,7 +185,8 @@ struct TransactionLogInfo : public ReferenceCounted<TransactionLogInfo>, NonCopy
 	TransactionLogInfo() : logToDatabase(true) {}
 	TransactionLogInfo(std::string identifier) : logToDatabase(false), identifier(identifier) {}
 
-	BinaryWriter trLogWriter{ IncludeVersion() };
+	constexpr static flat_buffers::FileIdentifier eventsToLogFileID = 98732756;
+	std::vector<FdbClientLogEvents::SerializableEvent> eventsToLog;
 	bool logsAdded{ false };
 	bool flushed{ false };
 
@@ -203,7 +206,7 @@ struct TransactionLogInfo : public ReferenceCounted<TransactionLogInfo>, NonCopy
 			logsAdded = true;
 			static_assert(std::is_base_of<FdbClientLogEvents::Event, T>::value,
 			              "Event should be derived class of FdbClientLogEvents::Event");
-			trLogWriter << event;
+			eventsToLog.emplace_back(event);
 		}
 	}
 

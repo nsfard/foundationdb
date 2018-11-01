@@ -263,8 +263,8 @@ struct ServerStatus {
 	}
 
 	// If a process has reappeared without the storage server that was on it (isFailed == true), we don't need to
-	// exclude it We also don't need to exclude processes who are in the wrong configuration (since those servers will be
-	// removed)
+	// exclude it We also don't need to exclude processes who are in the wrong configuration (since those servers will
+	// be removed)
 	bool excludeOnRecruit() { return !isFailed && !isWrongConfiguration; }
 };
 typedef AsyncMap<UID, ServerStatus> ServerStatusMap;
@@ -364,7 +364,7 @@ ACTOR Future<Reference<InitialDataDistribution>> getInitialDataDistribution(Data
 			Optional<Value> mode = wait(tr.get(dataDistributionModeKey));
 			if (mode.present()) {
 				BinaryReader rd(mode.get(), Unversioned());
-				rd >> result->mode;
+				old_serializer(rd, result->mode);
 			}
 			if (!result->mode) return result;
 
@@ -1966,7 +1966,9 @@ ACTOR Future<Void> storageRecruiter(DDTeamCollection* self, Reference<AsyncVar<s
 				rsr.excludeAddresses.push_back(it);
 			}
 
-			rsr.includeDCs = self->includedDCs;
+			rsr.includeDCs.clear();
+			rsr.includeDCs.reserve(self->includedDCs.size());
+			std::copy(self->includedDCs.begin(), self->includedDCs.end(), std::back_inserter(rsr.includeDCs));
 
 			TraceEvent(rsr.criticalRecruitment ? SevWarn : SevInfo, "DDRecruiting")
 			    .detail("State", "Sending request to CC")
@@ -2133,7 +2135,7 @@ ACTOR Future<Void> waitForDataDistributionEnabled(Database cx) {
 			if (mode.present()) {
 				BinaryReader rd(mode.get(), Unversioned());
 				int m;
-				rd >> m;
+				old_serializer(rd, m);
 				if (m) return Void();
 			}
 
@@ -2153,7 +2155,7 @@ ACTOR Future<bool> isDataDistributionEnabled(Database cx) {
 			if (mode.present()) {
 				BinaryReader rd(mode.get(), Unversioned());
 				int m;
-				rd >> m;
+				old_serializer(rd, m);
 				if (m) return true;
 			}
 			// SOMEDAY: Write a wrapper in MoveKeys.h
@@ -2260,7 +2262,8 @@ ACTOR Future<Void> dataDistribution(Reference<AsyncVar<struct ServerDBInfo>> db,
 	}
 
 	// cx->setOption( FDBDatabaseOptions::LOCATION_CACHE_SIZE, StringRef((uint8_t*)
-	// &SERVER_KNOBS->DD_LOCATION_CACHE_SIZE, 8) ); ASSERT( cx->locationCacheSize == SERVER_KNOBS->DD_LOCATION_CACHE_SIZE
+	// &SERVER_KNOBS->DD_LOCATION_CACHE_SIZE, 8) ); ASSERT( cx->locationCacheSize ==
+	// SERVER_KNOBS->DD_LOCATION_CACHE_SIZE
 	// );
 
 	// wait(debugCheckCoalescing(cx));

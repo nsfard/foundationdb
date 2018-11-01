@@ -48,20 +48,8 @@ intptr_t g_stackYieldLimit = 0;
 
 using namespace boost::asio::ip;
 
-// These impact both communications and the deserialization of certain database and IKeyValueStore keys.
-//
-// The convention is that 'x' and 'y' should match the major and minor version of the software, and 'z' should be 0.
-// To make a change without a corresponding increase to the x.y version, increment the 'dev' digit.
-//
-//                                                       xyzdev
-//                                                       vvvv
-const uint64_t currentProtocolVersion = 0x0FDB00B061000001LL;
-const uint64_t compatibleProtocolVersionMask = 0xffffffffffff0000LL;
-const uint64_t minValidProtocolVersion = 0x0FDB00A200060001LL;
-
-// This assert is intended to help prevent incrementing the leftmost digits accidentally. It will probably need to
-// change when we reach version 10.
-static_assert(currentProtocolVersion < 0x0FDB00B100000000LL, "Unexpected protocol version");
+const uint64_t oldProtocolVersion = 0x0FDB00B061000001LL;
+const uint64_t newProtocolVersion = 0x0FDB00C061000001LL;
 
 #if defined(__linux__)
 #include <execinfo.h>
@@ -123,7 +111,7 @@ thread_local INetwork* thread_network = 0;
 class Net2 sealed : public INetwork, public INetworkConnections {
 
 public:
-	Net2(NetworkAddress localAddress, bool useThreadPool, bool useMetrics);
+	Net2(NetworkAddress localAddress, uint64_t protocolVersion, bool useThreadPool, bool useMetrics);
 	void run();
 	void initMetrics();
 
@@ -133,6 +121,7 @@ public:
 	virtual Reference<IListener> listen(NetworkAddress localAddr);
 
 	// INetwork interface
+	virtual uint64_t protocolVersion() const override { return mProtocolVersion; }
 	virtual double now() { return currentTime; };
 	virtual Future<Void> delay(double seconds, int taskId);
 	virtual Future<class Void> yield(int taskID);
@@ -162,6 +151,7 @@ public:
 	}
 	std::vector<flowGlobalType> globals;
 
+	const uint64_t mProtocolVersion;
 	bool useThreadPool;
 	// private:
 
@@ -487,9 +477,9 @@ struct PromiseTask : public Task, public FastAllocated<PromiseTask> {
 	}
 };
 
-Net2::Net2(NetworkAddress localAddress, bool useThreadPool, bool useMetrics)
-  : useThreadPool(useThreadPool), network(this), reactor(this), tcpResolver(reactor.ios), stopped(false),
-    tasksIssued(0),
+Net2::Net2(NetworkAddress localAddress, uint64_t protocolVersion, bool useThreadPool, bool useMetrics)
+  : mProtocolVersion(protocolVersion), useThreadPool(useThreadPool), network(this), reactor(this),
+    tcpResolver(reactor.ios), stopped(false), tasksIssued(0),
     // Until run() is called, yield() will always yield
     tsc_begin(0), tsc_end(0), taskBegin(0), currentTaskID(TaskDefaultYield), lastMinTaskID(0), numYields(0) {
 	TraceEvent("Net2Starting");
@@ -997,9 +987,9 @@ void ASIOReactor::wake() {
 
 } // namespace N2
 
-INetwork* newNet2(NetworkAddress localAddress, bool useThreadPool, bool useMetrics) {
+INetwork* newNet2(NetworkAddress localAddress, uint64_t protocolVersion, bool useThreadPool, bool useMetrics) {
 	try {
-		N2::g_net2 = new N2::Net2(localAddress, useThreadPool, useMetrics);
+		N2::g_net2 = new N2::Net2(localAddress, protocolVersion, useThreadPool, useMetrics);
 	} catch (boost::system::system_error e) {
 		TraceEvent("Net2InitError").detail("Message", e.what());
 		throw unknown_error();

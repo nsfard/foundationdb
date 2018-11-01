@@ -80,16 +80,26 @@ struct NetSAV : SAV<T>, FlowReceiver, FastAllocated<NetSAV<T>> {
 		if (!SAV<T>::canBeSet())
 			return; // load balancing and retries can result in the same request being answered twice
 		this->addPromiseRef();
-		bool ok;
-		reader >> ok;
-		if (ok) {
-			T message;
-			reader >> message;
-			SAV<T>::sendAndDelPromiseRef(message);
+		if (reader.protocolVersion() < newProtocolVersion) {
+			bool ok;
+			reader.serializeBinaryItem(ok);
+			if (ok) {
+				T message;
+				old_serializer(reader, message);
+				SAV<T>::sendAndDelPromiseRef(message);
+			} else {
+				Error error;
+				old_serializer(reader, error);
+				SAV<T>::sendErrorAndDelPromiseRef(error);
+			}
 		} else {
-			Error error;
-			reader >> error;
-			SAV<T>::sendErrorAndDelPromiseRef(error);
+			ErrorOr<flat_buffers::EnsureTable<T>> msg;
+			serializer(reader, msg);
+			if (msg.present()) {
+				SAV<T>::sendAndDelPromiseRef(msg.get().asUnderlyingType());
+			} else {
+				SAV<T>::sendErrorAndDelPromiseRef(msg.getError());
+			}
 		}
 	}
 };
@@ -97,6 +107,9 @@ struct NetSAV : SAV<T>, FlowReceiver, FastAllocated<NetSAV<T>> {
 template <class T>
 class ReplyPromise sealed {
 public:
+	constexpr static flat_buffers::FileIdentifier file_identifier =
+	    (0x2 << 24) | flat_buffers::FileIdentifierFor<T>::value;
+
 	template <class U>
 	void send(U&& value) const {
 		sav->send(std::forward<U>(value));
@@ -155,7 +168,7 @@ private:
 template <class Ar, class T>
 void save(Ar& ar, const ReplyPromise<T>& value) {
 	auto const& ep = value.getEndpoint();
-	ar << ep;
+	old_serializer(ar, ep);
 	ASSERT(!ep.address.isValid() || ep.address.isPublic()); // No re-serializing non-public addresses (the reply
 	                                                        // connection won't be available to any other process)
 }
@@ -167,6 +180,34 @@ void load(Ar& ar, ReplyPromise<T>& value) {
 	value = ReplyPromise<T>(endpoint);
 	networkSender(value.getFuture(), endpoint);
 }
+
+namespace flat_buffers {
+
+template <class T>
+struct scalar_traits<ReplyPromise<T>> : std::true_type {
+	using endpoint = scalar_traits<Endpoint>;
+
+	constexpr static size_t size = endpoint::size;
+
+	static void save(uint8_t* out, const ReplyPromise<T>& reply) {
+		auto const& ep = reply.getEndpoint();
+		endpoint::save(out, ep);
+		ASSERT(!ep.address.isValid() || ep.address.isPublic()); // No re-serializing non-public addresses
+		                                                        // (the reply connection won't be
+		                                                        // available to any other process)
+	}
+
+	template <class C>
+	static void load(const uint8_t* in, ReplyPromise<T>& reply, C& context) {
+		Endpoint ep;
+		endpoint::load(in, ep, context);
+		FlowTransport::transport().loadedEndpoint(ep);
+		reply = ReplyPromise<T>(ep);
+		networkSender(reply.getFuture(), ep);
+	}
+};
+
+} // namespace flat_buffers
 
 template <class Reply>
 ReplyPromise<Reply> const& getReplyPromise(ReplyPromise<Reply> const& p) {
@@ -223,7 +264,7 @@ struct NetNotifiedQueue : NotifiedQueue<T>, FlowReceiver, FastAllocated<NetNotif
 	virtual void receive(ArenaReader& reader) {
 		this->addPromiseRef();
 		T message;
-		reader >> message;
+		serializer(reader, message);
 		this->send(std::move(message));
 		this->delPromiseRef();
 	}
@@ -235,6 +276,8 @@ class RequestStream {
 public:
 	// stream.send( request )
 	//   Unreliable at most once delivery: Delivers request unless there is a connection failure (zero or one times)
+	static constexpr flat_buffers::FileIdentifier file_identifier =
+	    (0x4 << 24) | flat_buffers::FileIdentifierFor<T>::value;
 
 	void send(const T& value) const {
 		if (queue->isRemoteEndpoint()) {
@@ -386,7 +429,7 @@ private:
 template <class Ar, class T>
 void save(Ar& ar, const RequestStream<T>& value) {
 	auto const& ep = value.getEndpoint();
-	ar << ep;
+	old_serializer(ar, ep);
 	UNSTOPPABLE_ASSERT(ep.address.isValid()); // No serializing PromiseStreams on a client with no public address
 }
 
@@ -397,5 +440,32 @@ void load(Ar& ar, RequestStream<T>& value) {
 	value = RequestStream<T>(endpoint);
 }
 
+namespace flat_buffers {
+
+template <class T>
+struct scalar_traits<RequestStream<T>> : std::true_type {
+	using endpointTraits = scalar_traits<Endpoint>;
+
+	static constexpr size_t size = endpointTraits::size;
+
+	static void save(uint8_t* out, const RequestStream<T>& stream) {
+		auto const& ep = stream.getEndpoint();
+		endpointTraits::save(out, ep);
+		UNSTOPPABLE_ASSERT(ep.address.isValid());
+	}
+
+	// Context is an arbitrary type that is plumbed by reference throughout the
+	// load call tree.
+	template <class Context>
+	static void load(const uint8_t* in, RequestStream<T>& stream, Context& context) {
+		Endpoint endpoint;
+		endpointTraits::load(in, endpoint, context);
+		FlowTransport::transport().loadedEndpoint(endpoint);
+		stream = RequestStream<T>(endpoint);
+	}
+};
+
+} // namespace flat_buffers
+
 #endif
-#include "fdbrpc/genericactors.actor.g.h"
+#include "fdbrpc/genericactors.actor.h"

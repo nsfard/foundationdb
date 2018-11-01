@@ -28,13 +28,15 @@
 #include "flow/actorcompiler.h" // This must be the last #include.
 
 struct PingWorkloadInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 13030261;
+
 	RequestStream<LoadedPingRequest> payloadPing;
 
 	UID id() const { return payloadPing.getEndpoint().token; }
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& payloadPing;
+		serializer(ar, payloadPing);
 	}
 };
 
@@ -99,7 +101,7 @@ struct PingWorkload : TestWorkload {
 	ACTOR Future<Void> persistInterface(PingWorkload* self, Database cx) {
 		state Transaction tr(cx);
 		BinaryWriter wr(IncludeVersion());
-		wr << self->interf;
+		serializer(wr, self->interf);
 		state Standalone<StringRef> serializedInterface = wr.toStringRef();
 		loop {
 			try {
@@ -131,7 +133,7 @@ struct PingWorkload : TestWorkload {
 					}
 					PingWorkloadInterface interf;
 					BinaryReader br(val.get(), IncludeVersion());
-					br >> interf;
+					serializer(br, interf);
 					result.push_back(interf);
 				}
 				return result;

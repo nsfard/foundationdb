@@ -28,6 +28,8 @@
 #include "RecoveryState.h"
 
 struct ServerDBInfo {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 9532683;
+
 	// This structure contains transient information which is broadcast to all workers for a database,
 	// permitting them to communicate with each other.  It is not available to the client.  This mechanism
 	// (see GetServerDBInfoRequest) is closely parallel to OpenDatabaseRequest for the client.
@@ -60,8 +62,8 @@ struct ServerDBInfo {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& id& clusterInterface& client& master& resolvers& dbName& recoveryCount& masterLifetime& logSystemConfig&
-		    priorCommittedLogServers& recoveryState;
+		serializer(ar, id, clusterInterface, client, master, resolvers, dbName, recoveryCount, masterLifetime,
+		           logSystemConfig, priorCommittedLogServers, recoveryState);
 	}
 };
 

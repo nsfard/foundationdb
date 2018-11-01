@@ -25,6 +25,8 @@
 #include "fdbclient/FDBTypes.h"
 
 struct ResolverInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 3280509;
+
 	enum { LocationAwareLoadBalance = 1 };
 	LocalityData locality;
 	UID uniqueID;
@@ -47,7 +49,7 @@ struct ResolverInterface {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& uniqueID& locality& resolve& metrics& split& waitFailure;
+		serializer(ar, uniqueID, locality, resolve, metrics, split, waitFailure);
 	}
 };
 
@@ -63,11 +65,13 @@ struct StateTransactionRef {
 
 	template <class Archive>
 	void serialize(Archive& ar) {
-		ar& committed& mutations;
+		serializer(ar, committed, mutations);
 	}
 };
 
 struct ResolveTransactionBatchReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 9859353;
+
 	Arena arena;
 	VectorRef<uint8_t> committed;
 	Optional<UID> debugID;
@@ -75,11 +79,13 @@ struct ResolveTransactionBatchReply {
 
 	template <class Archive>
 	void serialize(Archive& ar) {
-		ar& committed& stateMutations& arena& debugID;
+		serializer(ar, committed, stateMutations, arena, debugID);
 	}
 };
 
 struct ResolveTransactionBatchRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 10945272;
+
 	Arena arena;
 
 	Version prevVersion;
@@ -93,29 +99,36 @@ struct ResolveTransactionBatchRequest {
 
 	template <class Archive>
 	void serialize(Archive& ar) {
-		ar& prevVersion& version& lastReceivedVersion& transactions& txnStateTransactions& reply& arena& debugID;
+		serializer(ar, prevVersion, version, lastReceivedVersion, transactions, txnStateTransactions, reply, arena,
+		           debugID);
 	}
 };
 
 struct ResolutionMetricsRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 15126725;
+
 	ReplyPromise<int64_t> reply;
 
 	template <class Archive>
 	void serialize(Archive& ar) {
-		ar& reply;
+		serializer(ar, reply);
 	}
 };
 
 struct ResolutionSplitReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 12598512;
+
 	Key key;
 	int64_t used;
 	template <class Archive>
 	void serialize(Archive& ar) {
-		ar& key& used;
+		serializer(ar, key, used);
 	}
 };
 
 struct ResolutionSplitRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 14298166;
+
 	KeyRange range;
 	int64_t offset;
 	bool front;
@@ -123,7 +136,7 @@ struct ResolutionSplitRequest {
 
 	template <class Archive>
 	void serialize(Archive& ar) {
-		ar& range& offset& front& reply;
+		serializer(ar, range, offset, front, reply);
 	}
 };
 

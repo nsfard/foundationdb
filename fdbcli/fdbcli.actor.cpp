@@ -66,7 +66,8 @@ enum {
 	OPT_EXEC,
 	OPT_NO_STATUS,
 	OPT_STATUS_FROM_JSON,
-	OPT_VERSION
+	OPT_VERSION,
+	OPT_NEW_PROTOCOL
 };
 
 CSimpleOpt::SOption g_rgOptions[] = { { OPT_CONNFILE, "-C", SO_REQ_SEP },
@@ -83,6 +84,7 @@ CSimpleOpt::SOption g_rgOptions[] = { { OPT_CONNFILE, "-C", SO_REQ_SEP },
 	                                  { OPT_STATUS_FROM_JSON, "--status-from-json", SO_REQ_SEP },
 	                                  { OPT_VERSION, "--version", SO_NONE },
 	                                  { OPT_VERSION, "-v", SO_NONE },
+	                                  { OPT_NEW_PROTOCOL, "--new-protocol", SO_REQ_SEP },
 
 #ifndef TLS_DISABLED
 	                                  TLS_OPTION_FLAGS
@@ -543,7 +545,8 @@ void initHelp() {
 void printVersion() {
 	printf("FoundationDB CLI " FDB_VT_PACKAGE_NAME " (v" FDB_VT_VERSION ")\n");
 	printf("source version %s\n", getHGVersion());
-	printf("protocol %llx\n", currentProtocolVersion);
+	printf("old protocol %llx\n", oldProtocolVersion);
+	printf("new protocol %llx\n", newProtocolVersion);
 }
 
 void printHelpOverview() {
@@ -2114,6 +2117,7 @@ struct CLIOptions {
 	std::string tlsVerifyPeers;
 	std::string tlsCAPath;
 	std::string tlsPassword;
+	bool newProtocol = false;
 
 	CLIOptions(int argc, char* argv[]) : trace(false), exit_timeout(0), initialStatusCheck(true), exit_code(-1) {
 		program_name = argv[0];
@@ -2199,6 +2203,19 @@ struct CLIOptions {
 		case OPT_VERSION:
 			printVersion();
 			return FDB_EXIT_SUCCESS;
+		case OPT_NEW_PROTOCOL: {
+			std::string arg = args.OptionArg();
+			std::transform(arg.begin(), arg.end(), arg.begin(), [](char c) { return char(std::tolower(c)); });
+			if (arg == "on" || arg == "true" || arg == "1") {
+				newProtocol = true;
+			} else if (arg == "off" || arg == "false" || arg == "0") {
+				newProtocol = false;
+			} else {
+				fprintf(stderr, "Unknown parameter \"%s\" for --new-protocol - use \"on\" or \"off\"\n", arg.c_str());
+				return FDB_EXIT_ABORT;
+			}
+			break;
+		}
 		}
 		return -1;
 	}
@@ -2689,8 +2706,9 @@ ACTOR Future<int> cli(CLIOptions opt, LineNoise* plinenoise) {
 							wait(makeInterruptable(success(sampleRateFuture) && success(sizeLimitFuture)));
 							std::string sampleRateStr = "default", sizeLimitStr = "default";
 							if (sampleRateFuture.get().present()) {
-								const double sampleRateDbl =
-								    BinaryReader::fromStringRef<double>(sampleRateFuture.get().get(), Unversioned());
+								BinaryReader br(sampleRateFuture.get().get(), Unversioned());
+								double sampleRateDbl;
+								serializer(br, sampleRateDbl);
 								if (!std::isinf(sampleRateDbl)) {
 									sampleRateStr = boost::lexical_cast<std::string>(sampleRateDbl);
 								}
@@ -3272,7 +3290,7 @@ int main(int argc, char** argv) {
 	}
 
 	try {
-		setupNetwork();
+		setupNetwork(opt.newProtocol ? newProtocolVersion : oldProtocolVersion, 0, false);
 		Future<int> cliFuture = runCli(opt);
 		Future<Void> timeoutFuture = opt.exit_timeout ? timeExit(opt.exit_timeout) : Never();
 		auto f = stopNetworkAfter(success(cliFuture) || timeoutFuture);

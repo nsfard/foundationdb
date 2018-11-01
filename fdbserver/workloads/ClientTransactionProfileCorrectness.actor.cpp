@@ -3,6 +3,8 @@
 #include "fdbclient/ManagementAPI.h"
 #include "fdbclient/RunTransaction.actor.h"
 
+#include <flow/actorcompiler.h>
+
 static const Key CLIENT_LATENCY_INFO_PREFIX = LiteralStringRef("client_latency/");
 static const Key CLIENT_LATENCY_INFO_CTR_PREFIX = LiteralStringRef("client_latency_counter/");
 
@@ -25,32 +27,32 @@ static const int trIdFormatSize = 16;
 bool checkTxInfoEntryFormat(BinaryReader& reader) {
 	// Check protocol version
 	uint64_t protocolVersion;
-	reader >> protocolVersion;
+	old_serializer(reader, protocolVersion);
 	reader.setProtocolVersion(protocolVersion);
 
 	while (!reader.empty()) {
 		// Get EventType and timestamp
 		FdbClientLogEvents::EventType event;
-		reader >> event;
+		old_serializer(reader, event);
 		double timeStamp;
-		reader >> timeStamp;
+		old_serializer(reader, timeStamp);
 		switch (event) {
 		case FdbClientLogEvents::GET_VERSION_LATENCY: {
 			FdbClientLogEvents::EventGetVersion gv;
-			reader >> gv;
+			old_serializer(reader, gv);
 			ASSERT(gv.latency < 10000);
 			break;
 		}
 		case FdbClientLogEvents::GET_LATENCY: {
 			FdbClientLogEvents::EventGet g;
-			reader >> g;
+			old_serializer(reader, g);
 			ASSERT(g.latency < 10000 && g.valueSize < CLIENT_KNOBS->VALUE_SIZE_LIMIT &&
 			       g.key.size() < CLIENT_KNOBS->SYSTEM_KEY_SIZE_LIMIT);
 			break;
 		}
 		case FdbClientLogEvents::GET_RANGE_LATENCY: {
 			FdbClientLogEvents::EventGetRange gr;
-			reader >> gr;
+			old_serializer(reader, gr);
 			ASSERT(gr.latency < 10000 && gr.rangeSize < 1000000000 &&
 			       gr.startKey.size() < CLIENT_KNOBS->SYSTEM_KEY_SIZE_LIMIT &&
 			       gr.endKey.size() < CLIENT_KNOBS->SYSTEM_KEY_SIZE_LIMIT);
@@ -58,27 +60,27 @@ bool checkTxInfoEntryFormat(BinaryReader& reader) {
 		}
 		case FdbClientLogEvents::COMMIT_LATENCY: {
 			FdbClientLogEvents::EventCommit c;
-			reader >> c;
+			old_serializer(reader, c);
 			ASSERT(c.latency < 10000 && c.commitBytes < CLIENT_KNOBS->TRANSACTION_SIZE_LIMIT &&
 			       c.numMutations < 1000000);
 			break;
 		}
 		case FdbClientLogEvents::ERROR_GET: {
 			FdbClientLogEvents::EventGetError ge;
-			reader >> ge;
+			old_serializer(reader, ge);
 			ASSERT(ge.errCode < 10000 && ge.key.size() < CLIENT_KNOBS->SYSTEM_KEY_SIZE_LIMIT);
 			break;
 		}
 		case FdbClientLogEvents::ERROR_GET_RANGE: {
 			FdbClientLogEvents::EventGetRangeError gre;
-			reader >> gre;
+			old_serializer(reader, gre);
 			ASSERT(gre.errCode < 10000 && gre.startKey.size() < CLIENT_KNOBS->SYSTEM_KEY_SIZE_LIMIT &&
 			       gre.endKey.size() < CLIENT_KNOBS->SYSTEM_KEY_SIZE_LIMIT);
 			break;
 		}
 		case FdbClientLogEvents::ERROR_COMMIT: {
 			FdbClientLogEvents::EventCommitError ce;
-			reader >> ce;
+			old_serializer(reader, ce);
 			ASSERT(ce.errCode < 10000);
 			break;
 		}
@@ -236,7 +238,7 @@ struct ClientTransactionProfileCorrectnessWorkload : TestWorkload {
 		// FIXME: Find a way to check that contentsSize is not greater than a certain limit.
 		// if (counter != contentsSize) {
 		//	TraceEvent(SevError, "ClientTransactionProfilingIncorrectCtrVal").detail("Counter",
-		//counter).detail("ContentsSize", contentsSize); 	return false;
+		// counter).detail("ContentsSize", contentsSize); 	return false;
 		//}
 		TraceEvent(SevInfo, "ClientTransactionProfilingCtrval").detail("Counter", counter);
 		TraceEvent(SevInfo, "ClientTransactionProfilingContentsSize").detail("ContentsSize", contentsSize);

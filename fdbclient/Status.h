@@ -22,8 +22,11 @@
 #define FDBCLIENT_STATUS_H
 
 #include "../fdbrpc/JSONDoc.h"
+#include <flow/serialize.h>
 
 struct StatusObject : json_spirit::mObject {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 16016214;
+
 	typedef json_spirit::mObject Map;
 	typedef json_spirit::mArray Array;
 
@@ -31,27 +34,81 @@ struct StatusObject : json_spirit::mObject {
 	StatusObject(json_spirit::mObject const& o) : json_spirit::mObject(o) {}
 };
 
+struct SerializedStatusObject {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 1488033;
+
+	SerializedStatusObject() {}
+	explicit SerializedStatusObject(const StatusObject& obj)
+	  : obj(obj), serialized_(json_spirit::write_string(json_spirit::mValue(obj))) {}
+	explicit SerializedStatusObject(std::string_view serialized) : serialized_(serialized) {
+		json_spirit::mValue mv;
+		json_spirit::read_string(serialized, mv);
+		obj = StatusObject(mv.get_obj());
+	}
+	explicit SerializedStatusObject(std::string&& serialized) : serialized_(std::move(serialized)) {
+		json_spirit::mValue mv;
+		json_spirit::read_string(serialized_, mv);
+		obj = StatusObject(mv.get_obj());
+	}
+
+	const std::string& serialized() const { return serialized_; }
+	const StatusObject& statusObj() const { return obj; }
+
+	void swap(SerializedStatusObject& other) {
+		using std::swap;
+		swap(serialized_, other.serialized_);
+		swap(obj, other.obj);
+	}
+
+private:
+	std::string serialized_;
+	StatusObject obj;
+};
+
 template <class Ar>
-void load(Ar& ar, StatusObject& statusObj) {
+void load(Ar& ar, SerializedStatusObject& statusObj) {
 	std::string value;
 	int32_t length;
-	ar >> length;
+	ar.serializeBinaryItem(length);
 	value.resize(length);
 	ar.serializeBytes(&value[0], (int)value.length());
-	json_spirit::mValue mv;
-	json_spirit::read_string(value, mv);
-	statusObj = StatusObject(mv.get_obj());
+
+	SerializedStatusObject tmp(std::move(value));
+	tmp.swap(statusObj);
 
 	ASSERT(ar.protocolVersion() != 0);
 }
 
 template <class Ar>
-void save(Ar& ar, StatusObject const& statusObj) {
-	std::string value = json_spirit::write_string(json_spirit::mValue(statusObj));
-	ar << (int32_t)value.length();
+void save(Ar& ar, SerializedStatusObject const& sso) {
+	const std::string& value = sso.serialized();
+
+	int32_t l = value.length();
+	ar.serializeBinaryItem(l);
 	ar.serializeBytes((void*)&value[0], (int)value.length());
 	ASSERT(ar.protocolVersion() != 0);
 }
+
+namespace flat_buffers {
+template <>
+struct dynamic_size_traits<SerializedStatusObject> : std::true_type {
+private:
+	using T = SerializedStatusObject;
+
+public:
+	static WriteRawMemory save(const T& t) {
+		return { { unownedPtr(reinterpret_cast<const uint8_t*>(t.serialized().data())), t.serialized().size() } };
+	}
+
+	// Context is an arbitrary type that is plumbed by reference throughout the
+	// load call tree.
+	template <class Context>
+	static void load(const uint8_t* p, size_t n, T& t, Context&) {
+		SerializedStatusObject tmp(std::string_view(reinterpret_cast<const char*>(p), n));
+		tmp.swap(t);
+	}
+};
+} // namespace flat_buffers
 
 struct StatusArray : json_spirit::mArray {
 	StatusArray() {}

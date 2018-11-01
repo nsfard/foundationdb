@@ -99,6 +99,7 @@ private:
 };
 
 struct LeaderInfo {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 12718334;
 	UID changeID;
 	static const uint64_t mask = ~(127ll << 57);
 	Value serializedInfo;
@@ -133,11 +134,12 @@ struct LeaderInfo {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& changeID& serializedInfo& forward;
+		serializer(ar, changeID, serializedInfo, forward);
 	}
 };
 
 struct GetLeaderRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 215023;
 	Key key;
 	UID knownLeader;
 	ReplyPromise<Optional<LeaderInfo>> reply;
@@ -147,7 +149,7 @@ struct GetLeaderRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& key& knownLeader& reply;
+		serializer(ar, key, knownLeader, reply);
 	}
 };
 

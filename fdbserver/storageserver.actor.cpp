@@ -1305,13 +1305,13 @@ ACTOR Future<Void> getKeyValues(StorageServer* data, GetKeyValuesRequest req)
 			                      "storageserver.getKeyValues.AfterVersion");
 		//.detail("ShardBegin", printable(shard.begin)).detail("ShardEnd", printable(shard.end));
 		//} catch (Error& e) { TraceEvent("WrongShardServer", data->thisServerID).detail("Begin",
-		//req.begin.toString()).detail("End", req.end.toString()).detail("Version", version).detail("Shard",
+		// req.begin.toString()).detail("End", req.end.toString()).detail("Version", version).detail("Shard",
 		//"None").detail("In", "getKeyValues>getShardKeyRange"); throw e; }
 
 		if (!selectorInRange(req.end, shard) && !(req.end.isFirstGreaterOrEqual() && req.end.getKey() == shard.end)) {
 			//			TraceEvent("WrongShardServer1", data->thisServerID).detail("Begin",
-			//req.begin.toString()).detail("End", req.end.toString()).detail("Version", version).detail("ShardBegin",
-			//printable(shard.begin)).detail("ShardEnd", printable(shard.end)).detail("In",
+			// req.begin.toString()).detail("End", req.end.toString()).detail("Version", version).detail("ShardBegin",
+			// printable(shard.begin)).detail("ShardEnd", printable(shard.end)).detail("In",
 			//"getKeyValues>checkShardExtents");
 			throw wrong_shard_server();
 		}
@@ -2398,7 +2398,7 @@ bool containsRollback(VersionUpdateRef const& changes, Version& rollbackVersion)
 	for (auto it = changes.mutations.begin(); it; ++it)
 		if (it->type == it->SetValue && it->param1 == lastEpochEndKey) {
 			BinaryReader br(it->param2, Unversioned());
-			br >> rollbackVersion;
+			old_serializer(br, rollbackVersion);
 			return true;
 		}
 	return false;
@@ -2476,7 +2476,7 @@ private:
 
 			Version rollbackVersion;
 			BinaryReader br(m.param2, Unversioned());
-			br >> rollbackVersion;
+			old_serializer(br, rollbackVersion);
 
 			if (rollbackVersion < fromVersion && rollbackVersion > restoredVersion) {
 				TEST(true); // ShardApplyPrivateData shard rollback
@@ -2576,12 +2576,12 @@ ACTOR Future<Void> update(StorageServer* data, bool* pReceivedUpdate) {
 
 				if (LogProtocolMessage::isNextIn(cloneReader)) {
 					LogProtocolMessage lpm;
-					cloneReader >> lpm;
+					old_serializer(cloneReader, lpm);
 					dbgLastMessageWasProtocol = true;
 					cloneCursor1->setProtocolVersion(cloneReader.protocolVersion());
 				} else {
 					MutationRef msg;
-					cloneReader >> msg;
+					old_serializer(cloneReader, msg);
 
 					if (firstMutation && msg.param1.startsWith(systemKeys.end)) hasPrivateData = true;
 					firstMutation = false;
@@ -2654,14 +2654,14 @@ ACTOR Future<Void> update(StorageServer* data, bool* pReceivedUpdate) {
 
 			if (LogProtocolMessage::isNextIn(rd)) {
 				LogProtocolMessage lpm;
-				rd >> lpm;
+				old_serializer(rd, lpm);
 
 				data->logProtocol = rd.protocolVersion();
 				data->storage.changeLogProtocol(ver, data->logProtocol);
 				cloneCursor2->setProtocolVersion(rd.protocolVersion());
 			} else {
 				MutationRef msg;
-				rd >> msg;
+				old_serializer(rd, msg);
 
 				if (ver != invalidVersion) { // This change belongs to a version < minVersion
 					if (debugMutation("SSPeek", ver, msg) || ver == 1)
@@ -2728,7 +2728,7 @@ ACTOR Future<Void> update(StorageServer* data, bool* pReceivedUpdate) {
 
 			//TraceEvent("StorageServerUpdated", data->thisServerID).detail("Ver", ver).detail("DataVersion", data->version.get())
 			//	.detail("LastTLogVersion", data->lastTLogVersion).detail("NewOldest",
-			//updater.newOldestVersion).detail("DesiredOldest",data->desiredOldestVersion.get())
+			// updater.newOldestVersion).detail("DesiredOldest",data->desiredOldestVersion.get())
 			//	.detail("MaxReadTransactionLifeVersions", SERVER_KNOBS->MAX_READ_TRANSACTION_LIFE_VERSIONS);
 
 			// Trigger updateStorage if necessary

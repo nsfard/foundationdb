@@ -45,6 +45,8 @@ using std::min;
 using std::pair;
 
 struct TLogQueueEntryRef {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 2951375;
+
 	UID id;
 	Version version;
 	Version knownCommittedVersion;
@@ -57,12 +59,14 @@ struct TLogQueueEntryRef {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& version& messages& knownCommittedVersion& id;
+		serializer(ar, version, messages, knownCommittedVersion, id);
 	}
 	size_t expectedSize() const { return messages.expectedSize(); }
 };
 
 struct AlternativeTLogQueueEntryRef {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 10412884;
+
 	UID id;
 	Version version;
 	Version knownCommittedVersion;
@@ -74,11 +78,11 @@ struct AlternativeTLogQueueEntryRef {
 	void serialize(Ar& ar) {
 		ASSERT(!ar.isDeserializing && alternativeMessages);
 		uint32_t msgSize = expectedSize();
-		ar& version& msgSize;
+		old_serializer(ar, version, msgSize);
 		for (auto& msg : *alternativeMessages) {
-			ar.serializeBytes(msg.message);
+			ar.serializeBytes(msg.message.begin(), msg.message.size());
 		}
-		ar& knownCommittedVersion& id;
+		old_serializer(ar, knownCommittedVersion, id);
 	}
 
 	uint32_t expectedSize() const {
@@ -167,7 +171,7 @@ private:
 			if (e[payloadSize]) {
 				Arena a = e.arena();
 				ArenaReader ar(a, e.substr(0, payloadSize), IncludeVersion());
-				ar >> result;
+				serializer(ar, result);
 				self->updateVersionSizes(result, tLog);
 				return result;
 			}
@@ -204,17 +208,14 @@ static const KeyRange persistTagPoppedKeys = prefixRange(LiteralStringRef("TagPo
 static Key persistTagMessagesKey(UID id, Tag tag, Version version) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(persistTagMessagesKeys.begin);
-	wr << id;
-	wr << tag;
-	wr << bigEndian64(version);
+	old_serializer(wr, id, tag, bigEndian64(version));
 	return wr.toStringRef();
 }
 
 static Key persistTagPoppedKey(UID id, Tag tag) {
 	BinaryWriter wr(Unversioned());
 	wr.serializeBytes(persistTagPoppedKeys.begin);
-	wr << id;
-	wr << tag;
+	old_serializer(wr, id, tag);
 	return wr.toStringRef();
 }
 
@@ -225,7 +226,7 @@ static Value persistTagPoppedValue(Version popped) {
 static Tag decodeTagPoppedKey(KeyRef id, KeyRef key) {
 	Tag s;
 	BinaryReader rd(key.removePrefix(persistTagPoppedKeys.begin).removePrefix(id), Unversioned());
-	rd >> s;
+	old_serializer(rd, s);
 	return s;
 }
 
@@ -513,15 +514,15 @@ struct LogData : NonCopyable, public ReferenceCounted<LogData> {
 template <class T>
 void TLogQueue::push(T const& qe, Reference<LogData> logData) {
 	BinaryWriter wr(Unversioned()); // outer framing is not versioned
-	wr << uint32_t(0);
+	old_serializer(wr, uint32_t(0));
 	IncludeVersion().write(wr); // payload is versioned
-	wr << qe;
-	wr << uint8_t(1);
+	old_serializer(wr, qe, uint8_t(1));
 	*(uint32_t*)wr.getData() = wr.getLength() - sizeof(uint32_t) - sizeof(uint8_t);
 	auto loc = queue->push(wr.toStringRef());
 	//TraceEvent("TLogQueueVersionWritten", dbgid).detail("Size", wr.getLength() - sizeof(uint32_t) - sizeof(uint8_t)).detail("Loc", loc);
 	logData->versionLocation[qe.version] = loc;
 }
+
 void TLogQueue::pop(Version upTo, Reference<LogData> logData) {
 	// Keep only the given and all subsequent version numbers
 	// Find the first version >= upTo
@@ -627,7 +628,7 @@ ACTOR Future<Void> updatePersistentData(TLogData* self, Reference<LogData> logDa
 					BinaryWriter wr(Unversioned());
 
 					for (; msg != tagData->versionMessages.end() && msg->first == currentVersion; ++msg)
-						wr << msg->second.toStringRef();
+						old_serializer(wr, msg->second.toStringRef());
 
 					self->persistentData->set(KeyValueRef(
 					    persistTagMessagesKey(logData->logId, tagData->tag, currentVersion), wr.toStringRef()));
@@ -920,10 +921,10 @@ void commitMessages(TLogData* self, Reference<LogData> logData, Version version,
 	while (!rd.empty()) {
 		TagsAndMessage tagsAndMsg;
 		rd.checkpoint();
-		rd >> messageLength >> sub >> tagCount;
+		old_serializer(rd, messageLength, sub, tagCount);
 		tagsAndMsg.tags.resize(tagCount);
 		for (int i = 0; i < tagCount; i++) {
-			rd >> tagsAndMsg.tags[i];
+			old_serializer(rd, tagsAndMsg.tags[i]);
 		}
 		rawLength = messageLength + sizeof(messageLength);
 		rd.rewind();
@@ -1002,10 +1003,10 @@ void peekMessagesFromMemory(Reference<LogData> self, TLogPeekRequest const& req,
 			}
 
 			currentVersion = it->first;
-			messages << int32_t(-1) << currentVersion;
+			old_serializer(messages, int32_t(-1), currentVersion);
 		}
 
-		messages << it->second.toStringRef();
+		old_serializer(messages, it->second.toStringRef());
 	}
 }
 
@@ -1104,7 +1105,7 @@ ACTOR Future<Void> tLogPeekMessages(TLogData* self, TLogPeekRequest req, Referen
 
 		for (auto& kv : kvs) {
 			auto ver = decodeTagMessagesKey(kv.key);
-			messages << int32_t(-1) << ver;
+			old_serializer(messages, int32_t(-1), ver);
 			messages.serializeBytes(kv.value);
 		}
 
@@ -1930,7 +1931,7 @@ ACTOR Future<Void> restorePersistentState(TLogData* self, LocalityData locality,
 
 					//TraceEvent("TLogRecoveredQE", self->dbgid).detail("LogId", qe.id).detail("Ver", qe.version).detail("MessageBytes", qe.messages.size()).detail("Tags", qe.tags.size())
 					//	.detail("Tag0", qe.tags.size() ? qe.tags[0].tag : invalidTag).detail("Version",
-					//logData->version.get());
+					// logData->version.get());
 
 					if (logData) {
 						logData->knownCommittedVersion =

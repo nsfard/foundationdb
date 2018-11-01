@@ -331,7 +331,7 @@ ACTOR Future<Void> updateMetricRegistration(Database cx, MetricsConfig* config, 
 			tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
 			try {
 				Value timestamp =
-				    BinaryWriter::toValue(CompressedInt<int64_t>(now()), AssumeVersion(currentProtocolVersion));
+				    BinaryWriter::toValue(CompressedInt<int64_t>(now()), AssumeVersion(oldProtocolVersion));
 				for (auto& key : keys) {
 					// fprintf(stderr, "%s: register: %s\n", collection->address.toString().c_str(),
 					// printable(key).c_str());

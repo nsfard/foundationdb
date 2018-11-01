@@ -24,6 +24,7 @@
 
 #include "FDBTypes.h"
 #include "CoordinationInterface.h"
+#include "ClusterInterface.h"
 
 #define CLUSTER_FILE_ENV_VAR_NAME "FDB_CLUSTER_FILE"
 
@@ -40,13 +41,32 @@ Future<Void> monitorLeader(Reference<ClusterConnectionFile> const& connFile,
 
 Future<Void> monitorLeaderInternal(Reference<ClusterConnectionFile> const& connFile,
                                    Reference<AsyncVar<Value>> const& outSerializedLeaderInfo);
+template <class LeaderInterface>
+struct LeaderDeserializer {
+	Future<Void> operator()(const Reference<AsyncVar<Value>>& serializedInfo,
+	                        const Reference<AsyncVar<Optional<LeaderInterface>>>& outKnownLeader) {
+		return asyncDeserialize(serializedInfo, outKnownLeader);
+	}
+};
+
+Future<Void> asyncDeserializeClusterInterface(const Reference<AsyncVar<Value>>& serializedInfo,
+                                              const Reference<AsyncVar<Optional<ClusterInterface>>>& outKnownLeader);
+
+template <>
+struct LeaderDeserializer<ClusterInterface> {
+	Future<Void> operator()(const Reference<AsyncVar<Value>>& serializedInfo,
+	                        const Reference<AsyncVar<Optional<ClusterInterface>>>& outKnownLeader) {
+		return asyncDeserializeClusterInterface(serializedInfo, outKnownLeader);
+	}
+};
 
 template <class LeaderInterface>
 Future<Void> monitorLeader(Reference<ClusterConnectionFile> const& connFile,
                            Reference<AsyncVar<Optional<LeaderInterface>>> const& outKnownLeader) {
+	LeaderDeserializer<LeaderInterface> deserializer;
 	Reference<AsyncVar<Value>> serializedInfo(new AsyncVar<Value>);
 	Future<Void> m = monitorLeaderInternal(connFile, serializedInfo);
-	return m || asyncDeserialize(serializedInfo, outKnownLeader);
+	return m || deserializer(serializedInfo, outKnownLeader);
 }
 
 #pragma endregion

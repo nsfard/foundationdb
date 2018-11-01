@@ -163,6 +163,8 @@ struct YieldMockNetwork : INetwork, ReferenceCounted<YieldMockNetwork> {
 	int nextYield;
 	INetwork* baseNetwork;
 
+	virtual uint64_t protocolVersion() const { return baseNetwork->protocolVersion(); }
+
 	virtual flowGlobalType global(int id) { return baseNetwork->global(id); }
 	virtual void setGlobal(size_t id, flowGlobalType v) {
 		baseNetwork->setGlobal(id, v);
@@ -319,14 +321,14 @@ TEST_CASE("flow/flow/networked futures") {
 	{
 		RequestStream<int> locInt;
 		BinaryWriter wr(IncludeVersion());
-		wr << locInt;
+		serializer(wr, locInt);
 
 		ASSERT(locInt.getEndpoint().isValid() && locInt.getEndpoint().isLocal() &&
 		       locInt.getEndpoint().address == FlowTransport::transport().getLocalAddress());
 
 		BinaryReader rd(wr.toStringRef(), IncludeVersion());
 		RequestStream<int> remoteInt;
-		rd >> remoteInt;
+		serializer(rd, remoteInt);
 
 		ASSERT(remoteInt.getEndpoint() == locInt.getEndpoint());
 	}
@@ -336,13 +338,13 @@ TEST_CASE("flow/flow/networked futures") {
 	if (0) {
 		ReplyPromise<int> locInt;
 		BinaryWriter wr(IncludeVersion());
-		wr << locInt;
+		serializer(wr, locInt);
 
 		ASSERT(locInt.getEndpoint().isValid() && locInt.getEndpoint().isLocal());
 
 		BinaryReader rd(wr.toStringRef(), IncludeVersion());
 		ReplyPromise<int> remoteInt;
-		rd >> remoteInt;
+		serializer(rd, remoteInt);
 
 		ASSERT(remoteInt.getEndpoint() == locInt.getEndpoint());
 	}

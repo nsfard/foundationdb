@@ -407,7 +407,7 @@ struct BackupToDBUpgradeWorkload : TestWorkload {
 
 					BinaryReader br(backupKeysPacked.get(), IncludeVersion());
 					prevBackupRanges = Standalone<VectorRef<KeyRangeRef>>();
-					br >> prevBackupRanges;
+					serializer(br, prevBackupRanges);
 					wait(lockDatabase(tr, logUid));
 					tr->addWriteConflictRange(singleKeyRange(StringRef()));
 					wait(tr->commit());

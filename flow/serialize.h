@@ -27,6 +27,7 @@
 #include "Error.h"
 #include "Arena.h"
 #include <algorithm>
+#include "flat_buffers.h"
 
 // Though similar, is_binary_serializable cannot be replaced by std::is_pod, as doing so would prefer
 // memcpy over a defined serialize() method on a POD struct.  As not all of our structs are packed,
@@ -36,57 +37,187 @@
 // replace the usage of is_binary_serializable.
 template <class T>
 struct is_binary_serializable {
-	enum { value = 0 };
+	static constexpr bool value = false;
 };
 
 #define BINARY_SERIALIZABLE(T)                                                                                         \
 	template <>                                                                                                        \
 	struct is_binary_serializable<T> {                                                                                 \
-		enum { value = 1 };                                                                                            \
-	};
+		static constexpr bool value = true;                                                                            \
+	}
 
-BINARY_SERIALIZABLE(int8_t);
-BINARY_SERIALIZABLE(uint8_t);
-BINARY_SERIALIZABLE(int16_t);
-BINARY_SERIALIZABLE(uint16_t);
-BINARY_SERIALIZABLE(int32_t);
-BINARY_SERIALIZABLE(uint32_t);
-BINARY_SERIALIZABLE(int64_t);
-BINARY_SERIALIZABLE(uint64_t);
+BINARY_SERIALIZABLE(signed char);
+BINARY_SERIALIZABLE(unsigned char);
+BINARY_SERIALIZABLE(short);
+BINARY_SERIALIZABLE(unsigned short);
+BINARY_SERIALIZABLE(int);
+BINARY_SERIALIZABLE(unsigned int);
+BINARY_SERIALIZABLE(long);
+BINARY_SERIALIZABLE(unsigned long);
+BINARY_SERIALIZABLE(long long);
+BINARY_SERIALIZABLE(unsigned long long);
 BINARY_SERIALIZABLE(bool);
 BINARY_SERIALIZABLE(double);
 
+template <class T>
+constexpr bool is_binary_serializable_t = is_binary_serializable<T>::value;
+
+#define ENABLE_FLAT_BUFFERS
+extern const uint64_t oldProtocolVersion;
+extern const uint64_t newProtocolVersion;
+
+template <class T, typename = void>
+struct is_old_archive_helper : std::false_type {};
+
+template <class T>
+struct is_old_archive_helper<T, std::void_t<typename T::OLD_ARCHIVE>> : std::true_type {};
+
+template <class T>
+constexpr bool is_old_archive = is_old_archive_helper<T>::value;
+
+template <class T, class = void>
+struct only_old_protocol_helper : std::false_type {};
+
+template <class T>
+struct only_old_protocol_helper<T, std::void_t<typename T::OLD_PROTOCOL>> : std::true_type {};
+
+template <class T>
+constexpr bool only_old_protocol = only_old_protocol_helper<T>::value || is_old_archive<T>;
+
+template <class Archive, class... Items>
+std::enable_if_t<!is_old_archive<Archive>> serializer(Archive& ar, Items&... items) {
+	ar(items...);
+}
+
+template <class Archive, class... Items>
+std::enable_if_t<!is_old_archive<Archive>> serializer(Archive& ar, const Items&... items) {
+	ar(items...);
+}
+
+template <class Ar>
+struct LoadContext {
+	Ar& ar;
+	std::vector<std::function<void()>> doAfter;
+	LoadContext(Ar& ar) : ar(ar) {}
+	Arena& arena() { return ar.arena(); }
+	void done() const {
+		for (auto& f : doAfter) {
+			f();
+		}
+	}
+	void addArena(Arena& arena) { arena = ar.arena(); }
+};
+
 template <class Archive, class Item>
-inline typename Archive::WRITER& operator<<(Archive& ar, const Item& item) {
-	save(ar, const_cast<Item&>(item));
-	return ar;
+std::enable_if_t<is_old_archive<Archive>> serializer(Archive& ar, Item& item) {
+	serialize_fake_root(ar,
+	                    flat_buffers::FileIdentifierFor<
+	                        typename std::remove_cv<typename std::remove_reference<decltype(item)>::type>::type>::value,
+	                    item);
 }
 
 template <class Archive, class Item>
-inline typename Archive::READER& operator>>(Archive& ar, Item& item) {
-	load(ar, item);
-	return ar;
+std::enable_if_t<is_old_archive<Archive>> serializer(Archive& ar, Item const& item) {
+	serialize_fake_root(ar,
+	                    flat_buffers::FileIdentifierFor<
+	                        typename std::remove_cv<typename std::remove_reference<decltype(item)>::type>::type>::value,
+	                    item);
 }
 
 template <class Archive, class Item>
-inline typename Archive::WRITER& operator&(Archive& ar, Item& item) {
-	save(ar, item);
-	return ar;
+std::enable_if_t<is_old_archive<Archive>> new_serializer(Archive& ar, Item& item) {
+	new_serialize_fake_root(
+	    ar,
+	    flat_buffers::FileIdentifierFor<
+	        typename std::remove_cv<typename std::remove_reference<decltype(item)>::type>::type>::value,
+	    item);
 }
 
 template <class Archive, class Item>
-inline typename Archive::READER& operator&(Archive& ar, Item& item) {
-	load(ar, item);
-	return ar;
+std::enable_if_t<is_old_archive<Archive>> new_serializer(Archive& ar, Item const& item) {
+	new_serialize_fake_root(
+	    ar,
+	    flat_buffers::FileIdentifierFor<
+	        typename std::remove_cv<typename std::remove_reference<decltype(item)>::type>::type>::value,
+	    item);
 }
 
-template <class Archive, class T, class Enable = void>
+template <class T, typename = void>
+struct is_archive_writer : std::false_type {};
+
+template <class T>
+struct is_archive_writer<T, std::void_t<typename T::WRITER>> : std::true_type {};
+
+template <class T, typename = void>
+struct is_archive_reader : std::false_type {};
+
+template <class T>
+struct is_archive_reader<T, std::void_t<typename T::READER>> : std::true_type {};
+
+namespace detail {
+template <class U>
+struct WriterMember {
+	using WRITER = U;
+};
+template <class U>
+struct ReaderMember {
+	using READER = U;
+};
+} // namespace detail
+
+template <class Archive>
+struct CallArchiver
+  : public std::conditional_t<is_archive_reader<Archive>::value, detail::ReaderMember<CallArchiver<Archive>>,
+                              detail::WriterMember<CallArchiver<Archive>>> {
+	Archive& ar;
+	static constexpr int isDeserializing = Archive::isDeserializing;
+	using OLD_PROTOCOL = void;
+
+	template <class U>
+	void serializeBinaryItem(const U& u) {
+		ar.serializeBinaryItem(u);
+	}
+
+	template <class U>
+	void serializeBinaryItem(U& u) {
+		ar.serializeBinaryItem(u);
+	}
+
+	uint64_t protocolVersion() { return ar.protocolVersion(); }
+	const uint8_t* arenaRead(int bytes) { return (const uint8_t*)ar.readBytes(bytes); }
+	void setProtocolVersion(uint64_t version) { return ar.setProtocolVersion(version); }
+	void serializeBytes(const void* data, int bytes) { ar.serializeBytes(const_cast<void*>(data), bytes); }
+	const void* readBytes(int n) { return ar.readBytes(n); }
+
+	explicit CallArchiver(Archive& ar) : ar(ar) {}
+
+	template <class... Items>
+	void operator()(Items... items) {
+		old_serializer(ar, items...);
+	}
+};
+
+template <class Archive, class T>
 class Serializer {
 public:
 	static void serialize(Archive& ar, T& t) {
-		t.serialize(ar);
-		ASSERT(ar.protocolVersion() != 0);
+		if constexpr (is_binary_serializable_t<T>) {
+			ar.serializeBinaryItem(t);
+		} else {
+			CallArchiver ca(ar);
+			t.serialize(ca);
+			ASSERT(ar.protocolVersion() != 0);
+		}
 	}
+};
+
+template <class... Values>
+struct OldSerializer;
+
+template <>
+struct OldSerializer<> {
+	template <class Archiver>
+	void operator()(Archiver&) {}
 };
 
 template <class Ar, class T>
@@ -102,7 +233,7 @@ inline void load(Ar& ar, T& value) {
 template <class Archive>
 inline void load(Archive& ar, std::string& value) {
 	int32_t length;
-	ar >> length;
+	old_serializer(ar, length);
 	value.resize(length);
 	ar.serializeBytes(&value[0], (int)value.length());
 	ASSERT(ar.protocolVersion() != 0);
@@ -110,57 +241,166 @@ inline void load(Archive& ar, std::string& value) {
 
 template <class Archive>
 inline void save(Archive& ar, const std::string& value) {
-	ar << (int32_t)value.length();
+	old_serializer(ar, uint32_t(value.length()));
 	ar.serializeBytes((void*)&value[0], (int)value.length());
 	ASSERT(ar.protocolVersion() != 0);
 }
 
-template <class Archive, class T>
-class Serializer<Archive, T, typename std::enable_if<is_binary_serializable<T>::value>::type> {
-public:
-	static void serialize(Archive& ar, T& t) { ar.serializeBinaryItem(t); }
-};
+namespace flat_buffers {
 
-template <class Archive, class T1, class T2>
-class Serializer<Archive, std::pair<T1, T2>, void> {
-public:
-	static void serialize(Archive& ar, std::pair<T1, T2>& p) { ar& p.first& p.second; }
-};
+template <>
+struct scalar_traits<Error> : std::true_type {
+	using int_traits = scalar_traits<int>;
 
-template <class Archive, class T>
-inline void save(Archive& ar, const std::vector<T>& value) {
-	ar << (int)value.size();
-	for (auto it = value.begin(); it != value.end(); ++it) ar << *it;
-	ASSERT(ar.protocolVersion() != 0);
-}
-template <class Archive, class T>
-inline void load(Archive& ar, std::vector<T>& value) {
-	int s;
-	ar >> s;
-	value.clear();
-	value.reserve(s);
-	for (int i = 0; i < s; i++) {
-		value.push_back(T());
-		ar >> value[i];
+	constexpr static size_t size = int_traits::size;
+	static void save(uint8_t* out, const Error& e) { int_traits::save(out, e.code()); }
+
+	// Context is an arbitrary type that is plumbed by reference throughout the
+	// load call tree.
+	template <class Context>
+	static void load(const uint8_t* in, Error& out, Context& c) {
+		int code;
+		int_traits::load(in, code, c);
+		out = Error(code, nullptr);
 	}
-	ASSERT(ar.protocolVersion() != 0);
+};
+
+} // namespace flat_buffers
+
+template <class Archive>
+inline void load(Archive& ar, Error& e) {
+	int code;
+	serializer(ar, code);
+	e = Error(code, nullptr);
+}
+
+template <class Archive>
+inline void save(Archive& ar, const Error& e) {
+	serializer(ar, e.code());
 }
 
 template <class Archive, class T>
 inline void save(Archive& ar, const std::set<T>& value) {
-	ar << (int)value.size();
-	for (auto it = value.begin(); it != value.end(); ++it) ar << *it;
+	serializer(ar, int(value.size()));
+	for (auto it = value.begin(); it != value.end(); ++it) serializer(ar, *it);
 	ASSERT(ar.protocolVersion() != 0);
 }
 template <class Archive, class T>
 inline void load(Archive& ar, std::set<T>& value) {
 	int s;
-	ar >> s;
+	serializer(ar, s);
 	value.clear();
 	T currentValue;
 	for (int i = 0; i < s; i++) {
-		ar >> currentValue;
+		serializer(ar, currentValue);
 		value.insert(currentValue);
+	}
+	ASSERT(ar.protocolVersion() != 0);
+}
+
+template <class Head, class... Tail>
+struct OldSerializer<Head, Tail...> {
+	OldSerializer<Tail...> parent;
+
+	template <class Ar>
+	typename Ar::WRITER& operator()(Ar& ar, Head const& h, Tail const&... tail) {
+		save(ar, h);
+		parent(ar, tail...);
+		return ar;
+	}
+
+	template <class Ar>
+	typename Ar::READER& operator()(Ar& ar, Head& h, Tail&... tail) {
+		load(ar, h);
+		parent(ar, tail...);
+		return ar;
+	}
+};
+
+template <class Archiver, class... Values>
+void old_serializer(Archiver& ar, Values&... values) {
+	OldSerializer<Values...> old;
+	old(ar, values...);
+}
+
+template <class Archiver, class... Values>
+void old_serializer(Archiver& ar, Values const&... values) {
+	OldSerializer<Values...> old;
+	old(ar, values...);
+}
+
+template <class Archive, class... Items>
+void new_serialize_fake_root_deserialize(Archive& ar, flat_buffers::FileIdentifier file_identifier,
+                                         Items const&... items) {
+	static_assert(!Archive::isDeserializing);
+	int allocations = 0;
+	int size;
+	std::unique_ptr<uint8_t[]> buffer;
+	auto allocator = [&](size_t size_) {
+		++allocations;
+		size = size_;
+		buffer.reset(new uint8_t[size]);
+		return buffer.get();
+	};
+	auto res = flat_buffers::save_members(allocator, file_identifier, items...);
+	ASSERT(allocations == 1);
+	ar.serializeBytes(res, size);
+}
+
+template <class Archive, class... Items>
+void new_serialize_fake_root(Archive& ar, flat_buffers::FileIdentifier file_identifier, Items const&... items) {
+	new_serialize_fake_root_deserialize(ar, file_identifier, items...);
+}
+
+template <class Archive, class... Items>
+void new_serialize_fake_root(Archive& ar, flat_buffers::FileIdentifier file_identifier, Items&... items) {
+	if constexpr (Archive::isDeserializing) {
+		const uint8_t* data = reinterpret_cast<const uint8_t*>(ar.readAllBytes());
+		LoadContext<Archive> context(ar);
+		ASSERT(flat_buffers::read_file_identifier(data) == file_identifier);
+		flat_buffers::load_members(data, context, items...);
+		context.done();
+	} else {
+		new_serialize_fake_root_deserialize(ar, file_identifier, items...);
+	}
+}
+
+template <class Archive, class... Items>
+void serialize_fake_root(Archive& ar, flat_buffers::FileIdentifier file_identifier, Items&... items) {
+	static_assert(is_old_archive<Archive>);
+#ifndef ENABLE_FLAT_BUFFERS
+	GenericArchiver<0ul, Items...> archiver;
+	archiver(ar, items...);
+#else
+	if (ar.protocolVersion() < newProtocolVersion) {
+		old_serializer(ar, items...);
+	} else {
+		new_serialize_fake_root(ar, file_identifier, items...);
+	}
+#endif
+}
+
+template <class Archive, class T1, class T2>
+class Serializer<Archive, std::pair<T1, T2>> {
+public:
+	static void serialize(Archive& ar, std::pair<T1, T2>& p) { old_serializer(ar, p.first, p.second); }
+};
+
+template <class Archive, class T>
+inline void save(Archive& ar, const std::vector<T>& value) {
+	serializer(ar, int(value.size()));
+	for (auto it = value.begin(); it != value.end(); ++it) serializer(ar, *it);
+	ASSERT(ar.protocolVersion() != 0);
+}
+template <class Archive, class T>
+inline void load(Archive& ar, std::vector<T>& value) {
+	int s;
+	serializer(ar, s);
+	value.clear();
+	value.reserve(s);
+	for (int i = 0; i < s; i++) {
+		value.push_back(T());
+		serializer(ar, value[i]);
 	}
 	ASSERT(ar.protocolVersion() != 0);
 }
@@ -189,34 +429,22 @@ static inline bool valgrindCheck(const void* data, int bytes, const char* contex
 }
 #endif
 
-extern const uint64_t currentProtocolVersion;
-extern const uint64_t minValidProtocolVersion;
-extern const uint64_t compatibleProtocolVersionMask;
-
 struct _IncludeVersion {
 	uint64_t v;
 	explicit _IncludeVersion(uint64_t defaultVersion) : v(defaultVersion) {
-		ASSERT(defaultVersion >= minValidProtocolVersion);
+		ASSERT(defaultVersion >= oldProtocolVersion);
 	}
 	template <class Ar>
 	void write(Ar& ar) {
 		ar.setProtocolVersion(v);
-		ar << v;
+		ar.serializeBinaryItem(v);
 	}
 	template <class Ar>
 	void read(Ar& ar) {
-		ar >> v;
-		if (v < minValidProtocolVersion) {
+		ar.serializeBinaryItem(v);
+		if (v < oldProtocolVersion) {
 			auto err = incompatible_protocol_version();
-			TraceEvent(SevError, "InvalidSerializationVersion").error(err).detailf("Version", "%llx", v);
-			throw err;
-		}
-		if (v > currentProtocolVersion) {
-			// For now, no forward compatibility whatsoever is supported.  In the future, this check may be weakened for
-			// particular data structures (e.g. to support mismatches between client and server versions when the client
-			// must deserialize zookeeper and database structures)
-			auto err = incompatible_protocol_version();
-			TraceEvent(SevError, "FutureProtocolVersion").error(err).detailf("Version", "%llx", v);
+			TraceEvent(SevError, "InvalidSerializationVersion").detailf("Version", "{:x}", v).error(err);
 			throw err;
 		}
 		ar.setProtocolVersion(v);
@@ -224,7 +452,7 @@ struct _IncludeVersion {
 };
 struct _AssumeVersion {
 	uint64_t v;
-	explicit _AssumeVersion(uint64_t version) : v(version) { ASSERT(version >= minValidProtocolVersion); }
+	explicit _AssumeVersion(uint64_t version) : v(version) { ASSERT(version >= oldProtocolVersion); }
 	template <class Ar>
 	void write(Ar& ar) {
 		ar.setProtocolVersion(v);
@@ -245,8 +473,10 @@ struct _Unversioned {
 	}
 };
 
+extern uint64_t getProtocolVersion();
+
 // These functions return valid options to the VersionOptions parameter of the constructor of each archive type
-inline _IncludeVersion IncludeVersion(uint64_t defaultVersion = currentProtocolVersion) {
+inline _IncludeVersion IncludeVersion(uint64_t defaultVersion = getProtocolVersion()) {
 	return _IncludeVersion(defaultVersion);
 }
 inline _AssumeVersion AssumeVersion(uint64_t version) {
@@ -268,8 +498,9 @@ static uint64_t size_limits[] = { 0ULL,
 
 class BinaryWriter : NonCopyable {
 public:
-	static const int isDeserializing = 0;
+	static constexpr int isDeserializing = 0;
 	typedef BinaryWriter WRITER;
+	using OLD_ARCHIVE = void;
 
 	void serializeBytes(StringRef bytes) { serializeBytes(bytes.begin(), bytes.size()); }
 	void serializeBytes(const void* data, int bytes) {
@@ -309,7 +540,7 @@ public:
 	template <class T, class VersionOptions>
 	static Standalone<StringRef> toValue(T const& t, VersionOptions vo) {
 		BinaryWriter wr(vo);
-		wr << t;
+		serializer(wr, t);
 		return wr.toStringRef();
 	}
 
@@ -463,8 +694,9 @@ private:
 
 class ArenaReader {
 public:
-	static const int isDeserializing = 1;
+	static constexpr int isDeserializing = 1;
 	typedef ArenaReader READER;
+	using OLD_ARCHIVE = void;
 
 	const void* readBytes(int bytes) {
 		const char* b = begin;
@@ -472,6 +704,12 @@ public:
 		ASSERT(e <= end);
 		begin = e;
 		return b;
+	}
+
+	const void* readAllBytes() {
+		auto result = begin;
+		begin = end;
+		return result;
 	}
 
 	const void* peekBytes(int bytes) {
@@ -518,8 +756,9 @@ private:
 
 class BinaryReader {
 public:
-	static const int isDeserializing = 1;
+	static constexpr int isDeserializing = 1;
 	typedef BinaryReader READER;
+	using OLD_ARCHIVE = void;
 
 	const void* readBytes(int bytes) {
 		const char* b = begin;
@@ -527,6 +766,12 @@ public:
 		ASSERT(e <= end);
 		begin = e;
 		return b;
+	}
+
+	const void* readAllBytes() {
+		auto result = begin;
+		begin = end;
+		return result;
 	}
 
 	void serializeBytes(void* data, int bytes) { memcpy(data, readBytes(bytes), bytes); }
@@ -567,11 +812,15 @@ public:
 
 	Arena& arena() { return m_pool; }
 
-	template <class T, class VersionOptions>
+	template <class T, class VersionOptions, bool enforce_old = false>
 	static T fromStringRef(StringRef sr, VersionOptions vo) {
 		T t;
 		BinaryReader r(sr, vo);
-		r >> t;
+		if constexpr (enforce_old) {
+			old_serializer(r, t);
+		} else {
+			serializer(r, t);
+		}
 		return t;
 	}
 
@@ -614,8 +863,9 @@ struct PacketBuffer : SendBuffer, FastAllocated<PacketBuffer> {
 };
 
 struct PacketWriter {
-	static const int isDeserializing = 0;
+	static constexpr int isDeserializing = 0;
 	typedef PacketWriter WRITER;
+	using OLD_ARCHIVE = void;
 
 	PacketBuffer* buffer;
 	struct ReliablePacket*
@@ -679,7 +929,7 @@ struct SerializeSource : MakeSerializeSource<SerializeSource<T>> {
 	SerializeSource(T const& value) : value(value) {}
 	template <class Ar>
 	void serialize(Ar& ar) const {
-		ar << value;
+		serializer(ar, value);
 	}
 };
 
@@ -690,7 +940,7 @@ struct SerializeBoolAnd : MakeSerializeSource<SerializeBoolAnd<T>> {
 	SerializeBoolAnd(bool b, T const& value) : b(b), value(value) {}
 	template <class Ar>
 	void serialize(Ar& ar) const {
-		ar << b << value;
+		old_serializer(ar, b, value);
 	}
 };
 

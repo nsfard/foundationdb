@@ -28,6 +28,8 @@
 
 template <class Interface>
 struct OptionalInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = (0x10 << 24) | Interface::file_identifier;
+
 	// Represents an interface with a known id() and possibly known actual endpoints.
 	// For example, an OptionalInterface<TLogInterface> represents a particular tlog by id, which you might or might not
 	// presently know how to communicate with
@@ -46,19 +48,44 @@ struct OptionalInterface {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& iface;
+		serializer(ar, iface);
 		if (!iface.present())
-			ar& ident;
+			serializer(ar, ident);
 		else
 			ident = iface.get().id();
 	}
 
 protected:
+	friend struct flat_buffers::serializable_traits<OptionalInterface<Interface>>;
 	UID ident;
 	Optional<Interface> iface;
 };
 
+namespace flat_buffers {
+
+template <class Interface>
+struct serializable_traits<OptionalInterface<Interface>> : std::true_type {
+	template <class Archiver>
+	static void serialize(Archiver& ar, OptionalInterface<Interface>& m) {
+		if constexpr (!Archiver::isDeserializing) {
+			if (m.iface.present()) {
+				m.ident = m.iface.get().id();
+			}
+		}
+		::serializer(ar, m.iface, m.ident);
+		if constexpr (Archiver::isDeserializing) {
+			if (m.iface.present()) {
+				m.ident = m.iface.get().id();
+			}
+		}
+	}
+};
+
+} // namespace flat_buffers
+
 struct TLogSet {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 7851659;
+
 	std::vector<OptionalInterface<TLogInterface>> tLogs;
 	std::vector<OptionalInterface<TLogInterface>> logRouters;
 	int32_t tLogWriteAntiQuorum, tLogReplicationFactor;
@@ -127,12 +154,14 @@ struct TLogSet {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& tLogs& logRouters& tLogWriteAntiQuorum& tLogReplicationFactor& tLogPolicy& tLogLocalities& isLocal&
-		    locality& startVersion& satelliteTagLocations;
+		serializer(ar, tLogs, logRouters, tLogWriteAntiQuorum, tLogReplicationFactor, tLogPolicy, tLogLocalities,
+		           isLocal, locality, startVersion, satelliteTagLocations);
 	}
 };
 
 struct OldTLogConf {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 14675556;
+
 	std::vector<TLogSet> tLogs;
 	Version epochEnd;
 	int32_t logRouterTags;
@@ -161,11 +190,13 @@ struct OldTLogConf {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& tLogs& epochEnd& logRouterTags;
+		serializer(ar, tLogs, epochEnd, logRouterTags);
 	}
 };
 
 struct LogSystemConfig {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 15579318;
+
 	int32_t logSystemType;
 	std::vector<TLogSet> tLogs;
 	int32_t logRouterTags;
@@ -269,7 +300,8 @@ struct LogSystemConfig {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& logSystemType& tLogs& logRouterTags& oldTLogs& expectedLogSets& recruitmentID& stopped& recoveredAt;
+		serializer(ar, logSystemType, tLogs, logRouterTags, oldTLogs, expectedLogSets, recruitmentID, stopped,
+		           recoveredAt);
 	}
 };
 

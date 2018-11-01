@@ -29,6 +29,8 @@
 #include "ClientWorkerInterface.h"
 
 struct ClusterInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 15888863;
+
 	RequestStream<struct OpenDatabaseRequest> openDatabase;
 	RequestStream<struct FailureMonitoringRequest> failureMonitoring;
 	RequestStream<struct StatusRequest> databaseStatus;
@@ -52,11 +54,30 @@ struct ClusterInterface {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& openDatabase& failureMonitoring& databaseStatus& ping& getClientWorkers& forceRecovery;
+		serializer(ar, openDatabase, failureMonitoring, databaseStatus, ping, getClientWorkers, forceRecovery);
+	}
+};
+
+struct ClusterControllerClientInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 14997695;
+	ClusterInterface clientInterface;
+
+	bool operator==(ClusterControllerClientInterface const& r) const {
+		return clientInterface.id() == r.clientInterface.id();
+	}
+	bool operator!=(ClusterControllerClientInterface const& r) const {
+		return clientInterface.id() != r.clientInterface.id();
+	}
+
+	template <class Ar>
+	void serialize(Ar& ar) {
+		serializer(ar, clientInterface);
 	}
 };
 
 struct ClientVersionRef {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 7119781;
+
 	StringRef clientVersion;
 	StringRef sourceVersion;
 	StringRef protocolVersion;
@@ -93,7 +114,7 @@ struct ClientVersionRef {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& clientVersion& sourceVersion& protocolVersion;
+		serializer(ar, clientVersion, sourceVersion, protocolVersion);
 	}
 
 	size_t expectedSize() const { return clientVersion.size() + sourceVersion.size() + protocolVersion.size(); }
@@ -113,6 +134,8 @@ struct ClientVersionRef {
 };
 
 struct OpenDatabaseRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 2799502;
+
 	// Sent by the native API to the cluster controller to open a database and track client
 	//   info changes.  Returns immediately if the current client info id is different from
 	//   knownClientInfoID; otherwise returns when it next changes (or perhaps after a long interval)
@@ -124,12 +147,13 @@ struct OpenDatabaseRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ASSERT(ar.protocolVersion() >= 0x0FDB00A400040001LL);
-		ar& dbName& issues& supportedVersions& traceLogGroup& knownClientInfoID& reply& arena;
+		serializer(ar, dbName, issues, supportedVersions, traceLogGroup, knownClientInfoID, reply, arena);
 	}
 };
 
 struct SystemFailureStatus {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 10537134;
+
 	NetworkAddress address;
 	FailureStatus status;
 
@@ -138,11 +162,13 @@ struct SystemFailureStatus {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& address& status;
+		serializer(ar, address, status);
 	}
 };
 
 struct FailureMonitoringRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 7283128;
+
 	// Sent by all participants to the cluster controller reply.clientRequestIntervalMS
 	//   ms after receiving the previous reply.
 	// Provides the controller the self-diagnosed status of the sender, and also
@@ -159,11 +185,13 @@ struct FailureMonitoringRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& senderStatus& failureInformationVersion& reply;
+		serializer(ar, senderStatus, failureInformationVersion, reply);
 	}
 };
 
 struct FailureMonitoringReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 9379499;
+
 	VectorRef<SystemFailureStatus> changes;
 	Version failureInformationVersion;
 	bool allOthersFailed; // If true, changes are relative to all servers being failed, otherwise to the version given
@@ -175,58 +203,58 @@ struct FailureMonitoringReply {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& changes& failureInformationVersion& allOthersFailed& clientRequestIntervalMS& considerServerFailedTimeoutMS&
-		    arena;
+		serializer(ar, changes, failureInformationVersion, allOthersFailed, clientRequestIntervalMS,
+		           considerServerFailedTimeoutMS, arena);
 	}
 };
 
 struct StatusRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 9592529;
 	ReplyPromise<struct StatusReply> reply;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& reply;
+		serializer(ar, reply);
 	}
 };
 
 struct StatusReply {
-	StatusObject statusObj;
-	std::string statusStr;
+	constexpr static flat_buffers::FileIdentifier file_identifier = 12551650;
+
+	SerializedStatusObject statusObj;
 
 	StatusReply() {}
-	explicit StatusReply(StatusObject obj)
-	  : statusObj(obj), statusStr(json_spirit::write_string(json_spirit::mValue(obj))) {}
+	explicit StatusReply(SerializedStatusObject obj) : statusObj(obj) {}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& statusStr;
-		if (ar.isDeserializing) {
-			json_spirit::mValue mv;
-			json_spirit::read_string(statusStr, mv);
-			statusObj = StatusObject(mv.get_obj());
-		}
+		serializer(ar, statusObj);
 	}
 };
 
 struct GetClientWorkersRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 16323297;
+
 	ReplyPromise<vector<ClientWorkerInterface>> reply;
 
 	GetClientWorkersRequest() {}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& reply;
+		serializer(ar, reply);
 	}
 };
 
 struct ForceRecoveryRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 7764012;
+
 	ReplyPromise<Void> reply;
 
 	ForceRecoveryRequest() {}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& reply;
+		serializer(ar, reply);
 	}
 };
 

@@ -19,7 +19,7 @@
  */
 
 #include "fdbrpc/simulator.h"
-#include "flow/DeterministicRandom.h"
+#include <flow/DeterministicRandom.h>
 #include "fdbrpc/PerfMetric.h"
 #include "flow/Platform.h"
 #include "flow/SystemMonitor.h"
@@ -118,7 +118,8 @@ enum {
 	OPT_IO_TRUST_SECONDS,
 	OPT_IO_TRUST_WARN_ONLY,
 	OPT_FILESYSTEM,
-	OPT_KVFILE
+	OPT_KVFILE,
+	OPT_PROTOCOLVERSION
 };
 
 CSimpleOpt::SOption g_rgOptions[] = { { OPT_CONNFILE, "-C", SO_REQ_SEP },
@@ -192,6 +193,7 @@ CSimpleOpt::SOption g_rgOptions[] = { { OPT_CONNFILE, "-C", SO_REQ_SEP },
 	                                  { OPT_METRICSPREFIX, "--metrics_prefix", SO_REQ_SEP },
 	                                  { OPT_IO_TRUST_SECONDS, "--io_trust_seconds", SO_REQ_SEP },
 	                                  { OPT_IO_TRUST_WARN_ONLY, "--io_trust_warn_only", SO_NONE },
+	                                  { OPT_PROTOCOLVERSION, "--new-protocol", SO_REQ_SEP },
 
 #ifndef TLS_DISABLED
 	                                  TLS_OPTION_FLAGS
@@ -530,7 +532,7 @@ void testSerializationSpeed() {
 			tstart = timer();
 
 			BinaryWriter wr(IncludeVersion());
-			wr << batch;
+			serializer(wr, batch);
 
 			bytes += wr.getLength();
 
@@ -545,7 +547,8 @@ void testSerializationSpeed() {
 				tstart = timer();
 				ArenaReader rd(arena, data, IncludeVersion());
 				VectorRef<CommitTransactionRef> batch2;
-				rd >> arena >> batch2;
+				serialize_fake_root(rd, flat_buffers::FileIdentifierFor<VectorRef<CommitTransactionRef>>::value, arena,
+				                    batch2);
 
 				deserialize += timer() - tstart;
 			}
@@ -652,7 +655,7 @@ void parentWatcher(void* parentHandle) {
 static void printVersion() {
 	printf("FoundationDB " FDB_VT_PACKAGE_NAME " (v" FDB_VT_VERSION ")\n");
 	printf("source version %s\n", getHGVersion());
-	printf("protocol %llx\n", currentProtocolVersion);
+	printf("protocol %llx\n", newProtocolVersion);
 }
 
 static void printHelpTeaser(const char* name) {
@@ -954,6 +957,7 @@ int main(int argc, char* argv[]) {
 		LocalityData localities;
 		int minTesterCount = 1;
 		bool testOnServers = false;
+		uint64_t protocolVersion = oldProtocolVersion;
 
 		Reference<TLSOptions> tlsOptions = Reference<TLSOptions>(new TLSOptions);
 		std::string tlsCertPath, tlsKeyPath, tlsCAPath, tlsPassword;
@@ -1298,6 +1302,18 @@ int main(int argc, char* argv[]) {
 			case OPT_IO_TRUST_WARN_ONLY:
 				fileIoWarnOnly = true;
 				break;
+			case OPT_PROTOCOLVERSION: {
+				std::string arg = args.OptionArg();
+				for (auto& c : arg) {
+					std::tolower(c);
+				}
+				if (arg == "random") {
+					protocolVersion = 0;
+				} else if (arg != "on") {
+					protocolVersion = oldProtocolVersion;
+				}
+				break;
+			}
 #ifndef TLS_DISABLED
 			case TLSOptions::OPT_TLS_PLUGIN:
 				args.OptionArg();
@@ -1319,6 +1335,11 @@ int main(int argc, char* argv[]) {
 				break;
 #endif
 			}
+		}
+
+		if (protocolVersion == 0 && role != Simulation) {
+			fprintf(stderr, "Error: new-protocol=random only valid for simulation testing");
+			return FDB_EXIT_ERROR;
 		}
 
 		if (seedConnString.length() && seedConnFile.length()) {
@@ -1574,7 +1595,7 @@ int main(int argc, char* argv[]) {
 			startNewSimulator();
 			openTraceFile(NetworkAddress(), rollsize, maxLogsSize, logFolder, "trace", logGroup);
 		} else {
-			g_network = newNet2(NetworkAddress(), useThreadPool, true);
+			g_network = newNet2(NetworkAddress(), protocolVersion, useThreadPool, true);
 			FlowTransport::createInstance(1);
 
 			openTraceFile(publicAddress, rollsize, maxLogsSize, logFolder, "trace", logGroup);
@@ -1706,7 +1727,7 @@ int main(int argc, char* argv[]) {
 				platform::createDirectory(dataFolder);
 			}
 
-			setupAndRun(dataFolder, testFile, restarting, tlsOptions);
+			setupAndRun(protocolVersion, dataFolder, testFile, restarting, tlsOptions);
 			g_simulator.run();
 		} else if (role == FDBD) {
 			ASSERT(connectionFile);

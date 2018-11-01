@@ -29,11 +29,14 @@
 #else
 #include <unordered_map>
 #endif
+#include "flat_buffers.h"
 
 class UID {
 	uint64_t part[2];
 
 public:
+	constexpr static flat_buffers::FileIdentifier file_identifier = 10151939;
+
 	UID() { part[0] = part[1] = 0; }
 	UID(uint64_t a, uint64_t b) {
 		part[0] = a;
@@ -56,9 +59,27 @@ public:
 	template <class Ar>
 	void serialize_unversioned(
 	    Ar& ar) { // Changing this serialization format will affect key definitions, so can't simply be versioned!
-		ar& part[0] & part[1];
+		old_serializer(ar, part[0], part[1]);
 	}
 };
+
+namespace flat_buffers {
+template <>
+struct scalar_traits<UID> : std::true_type {
+	constexpr static size_t size = sizeof(uint64_t[2]);
+	static void save(uint8_t* out, const UID& uid) {
+		uint64_t* outI = reinterpret_cast<uint64_t*>(out);
+		outI[0] = uid.first();
+		outI[1] = uid.second();
+	}
+
+	template <class Context>
+	static void load(const uint8_t* i, UID& out, Context& context) {
+		const uint64_t* in = reinterpret_cast<const uint64_t*>(i);
+		out = UID(in[0], in[1]);
+	}
+};
+} // namespace flat_buffers
 
 template <class Ar>
 void load(Ar& ar, UID& uid) {

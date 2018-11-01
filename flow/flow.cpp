@@ -210,3 +210,7 @@ bool validationIsEnabled() {
 void enableBuggify(bool enabled) {
 	buggifyActivated = enabled;
 }
+
+uint64_t getProtocolVersion() {
+	return g_network->protocolVersion();
+}

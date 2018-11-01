@@ -24,6 +24,7 @@
 
 #include "flow/flow.h"
 #include "ReplicationTypes.h"
+#include <flow/serialize_variant.h>
 
 template <class Ar>
 void serializeReplicationPolicy(Ar& ar, IRepPolicyRef& policy);
@@ -52,6 +53,8 @@ struct IReplicationPolicy : public ReferenceCounted<IReplicationPolicy> {
 		refThis->delref_no_destroy();
 	}
 
+	virtual void deserializationDone() = 0;
+
 	// Utility functions
 	bool selectReplicas(LocalitySetRef& fromServers, std::vector<LocalityEntry>& results);
 	bool validate(LocalitySetRef const& solutionSet) const;
@@ -70,7 +73,7 @@ struct IReplicationPolicy : public ReferenceCounted<IReplicationPolicy> {
 template <class Archive>
 inline void load(Archive& ar, IRepPolicyRef& value) {
 	bool present = (value.getPtr());
-	ar >> present;
+	old_serializer(ar, present);
 	if (present) {
 		serializeReplicationPolicy(ar, value);
 	} else {
@@ -81,7 +84,7 @@ inline void load(Archive& ar, IRepPolicyRef& value) {
 template <class Archive>
 inline void save(Archive& ar, const IRepPolicyRef& value) {
 	bool present = (value.getPtr());
-	ar << present;
+	old_serializer(ar, present);
 	if (present) {
 		serializeReplicationPolicy(ar, (IRepPolicyRef&)value);
 	}
@@ -89,6 +92,8 @@ inline void save(Archive& ar, const IRepPolicyRef& value) {
 
 struct PolicyOne : IReplicationPolicy, public ReferenceCounted<PolicyOne> {
 	PolicyOne(){};
+	PolicyOne(const PolicyOne&) {}
+	PolicyOne(PolicyOne&&) {}
 	virtual ~PolicyOne(){};
 	virtual std::string name() const { return "One"; }
 	virtual std::string info() const { return "1"; }
@@ -99,11 +104,16 @@ struct PolicyOne : IReplicationPolicy, public ReferenceCounted<PolicyOne> {
 	                            std::vector<LocalityEntry>& results);
 	template <class Ar>
 	void serialize(Ar& ar) {}
+	virtual void deserializationDone() {}
 	virtual void attributeKeys(std::set<std::string>* set) const override { return; }
 };
 
 struct PolicyAcross : IReplicationPolicy, public ReferenceCounted<PolicyAcross> {
+	friend struct flat_buffers::serializable_traits<PolicyAcross*>;
+	PolicyAcross();
 	PolicyAcross(int count, std::string const& attribKey, IRepPolicyRef const policy);
+	PolicyAcross(const PolicyAcross& other);
+	PolicyAcross(PolicyAcross&& other);
 	virtual ~PolicyAcross();
 	virtual std::string name() const { return "Across"; }
 	virtual std::string info() const { return format("%s^%d x ", _attribKey.c_str(), _count) + _policy->info(); }
@@ -115,9 +125,11 @@ struct PolicyAcross : IReplicationPolicy, public ReferenceCounted<PolicyAcross> 
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& _attribKey& _count;
+		old_serializer(ar, _attribKey, _count);
 		serializeReplicationPolicy(ar, _policy);
 	}
+
+	virtual void deserializationDone() {}
 
 	static bool compareAddedResults(const std::pair<int, int>& rhs, const std::pair<int, int>& lhs) {
 		return (rhs.first < lhs.first) || (!(lhs.first < rhs.first) && (rhs.second < lhs.second));
@@ -142,10 +154,15 @@ protected:
 };
 
 struct PolicyAnd : IReplicationPolicy, public ReferenceCounted<PolicyAnd> {
+	friend struct flat_buffers::serializable_traits<PolicyAnd*>;
+	PolicyAnd() {}
 	PolicyAnd(std::vector<IRepPolicyRef> policies) : _policies(policies), _sortedPolicies(policies) {
 		// Sort the policy array
 		std::sort(_sortedPolicies.begin(), _sortedPolicies.end(), PolicyAnd::comparePolicy);
 	}
+	PolicyAnd(const PolicyAnd& other) : _policies(other._policies), _sortedPolicies(other._sortedPolicies) {}
+	PolicyAnd(PolicyAnd&& other)
+	  : _policies(std::move(other._policies)), _sortedPolicies(std::move(other._sortedPolicies)) {}
 	virtual ~PolicyAnd() {}
 	virtual std::string name() const { return "And"; }
 	virtual std::string info() const {
@@ -186,7 +203,7 @@ struct PolicyAnd : IReplicationPolicy, public ReferenceCounted<PolicyAnd> {
 	template <class Ar>
 	void serialize(Ar& ar) {
 		int count = _policies.size();
-		ar& count;
+		old_serializer(ar, count);
 		_policies.resize(count);
 		for (int i = 0; i < count; i++) {
 			serializeReplicationPolicy(ar, _policies[i]);
@@ -195,6 +212,11 @@ struct PolicyAnd : IReplicationPolicy, public ReferenceCounted<PolicyAnd> {
 			_sortedPolicies = _policies;
 			std::sort(_sortedPolicies.begin(), _sortedPolicies.end(), PolicyAnd::comparePolicy);
 		}
+	}
+
+	virtual void deserializationDone() {
+		_sortedPolicies = _policies;
+		std::sort(_sortedPolicies.begin(), _sortedPolicies.end(), PolicyAnd::comparePolicy);
 	}
 
 	virtual void attributeKeys(std::set<std::string>* set) const override {
@@ -210,43 +232,165 @@ protected:
 
 extern int testReplication();
 
+namespace flat_buffers {
+
+#define POLICY_CONSTRUCTION_WRAPPER(t)                                                                                 \
+	template <>                                                                                                        \
+	struct object_construction<t*> {                                                                                   \
+		using type = t*;                                                                                               \
+		type obj;                                                                                                      \
+                                                                                                                       \
+		object_construction() : obj(new t()) {}                                                                        \
+		object_construction(object_construction&& other) : obj(other.obj) { other.obj = nullptr; }                     \
+		object_construction(const object_construction& other) : obj() {}                                               \
+                                                                                                                       \
+		object_construction& operator=(object_construction&& other) {                                                  \
+			if (obj != nullptr) {                                                                                      \
+				delete obj;                                                                                            \
+			}                                                                                                          \
+			obj = other.obj;                                                                                           \
+			other.obj = nullptr;                                                                                       \
+			return *this;                                                                                              \
+		}                                                                                                              \
+                                                                                                                       \
+		object_construction& operator=(const object_construction& other) {                                             \
+			if (obj != nullptr) {                                                                                      \
+				delete obj;                                                                                            \
+			}                                                                                                          \
+			obj = new t(*other.obj);                                                                                   \
+			return *this;                                                                                              \
+		}                                                                                                              \
+                                                                                                                       \
+		type& get() { return obj; }                                                                                    \
+		const type& get() const { return obj; }                                                                        \
+	};
+
+POLICY_CONSTRUCTION_WRAPPER(PolicyOne);
+POLICY_CONSTRUCTION_WRAPPER(PolicyAcross);
+POLICY_CONSTRUCTION_WRAPPER(PolicyAnd);
+
+template <>
+struct FileIdentifierFor<IRepPolicyRef> {
+	static constexpr FileIdentifier value = 14695621;
+};
+
+template <>
+struct serializable_traits<PolicyOne*> : std::true_type {
+	template <class Archiver>
+	static void serialize(Archiver& ar, PolicyOne*& p) {}
+};
+
+template <>
+struct serializable_traits<PolicyAcross*> : std::true_type {
+	template <class Archiver>
+	static void serialize(Archiver& ar, PolicyAcross*& p) {
+		::serializer(ar, p->_count, p->_attribKey, p->_policy);
+	}
+};
+
+template <>
+struct serializable_traits<PolicyAnd*> : std::true_type {
+	template <class Archiver>
+	static void serialize(Archiver& ar, PolicyAnd*& p) {
+		::serializer(ar, p->_policies);
+	}
+};
+
+template <>
+struct serializable_traits<IRepPolicyRef> : std::true_type {
+	template <class Archiver>
+	static void serialize(Archiver& ar, IRepPolicyRef& policy) {
+		::serializer(ar, policy.changePtrUnsafe());
+	}
+};
+
+template <>
+struct union_like_traits<IReplicationPolicy*> : std::true_type {
+	using Member = IReplicationPolicy*;
+	using alternatives = pack<PolicyOne*, PolicyAcross*, PolicyAnd*>;
+
+	static uint8_t index(const Member& policy) {
+		if (policy->name() == "One") {
+			return 0;
+		} else if (policy->name() == "And") {
+			return 2;
+		} else {
+			return 1;
+		}
+	}
+
+	static bool empty(const Member& policy) { return policy == nullptr; }
+
+	template <int i>
+	static const index_t<i, alternatives>& get(IReplicationPolicy* const& member) {
+		if constexpr (i == 0) {
+			return reinterpret_cast<PolicyOne* const&>(member);
+		} else if constexpr (i == 1) {
+			return reinterpret_cast<PolicyAcross* const&>(member);
+		} else {
+			return reinterpret_cast<PolicyAnd* const&>(member);
+		}
+	}
+
+	template <int i, class Alternative>
+	static const void assign(Member& policy, const Alternative& impl) {
+		if (policy != nullptr) {
+			delete policy;
+		}
+		policy = impl;
+	}
+
+	template <class Context>
+	static void done(Member& policy, Context&) {
+		if (policy != nullptr) {
+			policy->deserializationDone();
+		}
+	}
+};
+
+} // namespace flat_buffers
+
 template <class Ar>
 void serializeReplicationPolicy(Ar& ar, IRepPolicyRef& policy) {
-	if (Ar::isDeserializing) {
-		StringRef name;
-		ar& name;
+	if (ar.protocolVersion() < newProtocolVersion) {
+		if (Ar::isDeserializing) {
+			StringRef name;
+			old_serializer(ar, name);
 
-		if (name == LiteralStringRef("One")) {
-			PolicyOne* pointer = new PolicyOne();
-			pointer->serialize(ar);
-			policy = IRepPolicyRef(pointer);
-		} else if (name == LiteralStringRef("Across")) {
-			PolicyAcross* pointer = new PolicyAcross(0, "", IRepPolicyRef());
-			pointer->serialize(ar);
-			policy = IRepPolicyRef(pointer);
-		} else if (name == LiteralStringRef("And")) {
-			PolicyAnd* pointer = new PolicyAnd({});
-			pointer->serialize(ar);
-			policy = IRepPolicyRef(pointer);
-		} else if (name == LiteralStringRef("None")) {
-			policy = IRepPolicyRef();
+			if (name == LiteralStringRef("One")) {
+				PolicyOne* pointer = new PolicyOne();
+				pointer->serialize(ar);
+				policy = IRepPolicyRef(pointer);
+			} else if (name == LiteralStringRef("Across")) {
+				PolicyAcross* pointer = new PolicyAcross(0, "", IRepPolicyRef());
+				pointer->serialize(ar);
+				policy = IRepPolicyRef(pointer);
+			} else if (name == LiteralStringRef("And")) {
+				PolicyAnd* pointer = new PolicyAnd(std::vector<IRepPolicyRef>{});
+				pointer->serialize(ar);
+				policy = IRepPolicyRef(pointer);
+			} else if (name == LiteralStringRef("None")) {
+				policy = IRepPolicyRef();
+			} else {
+				TraceEvent(SevError, "SerializingInvalidPolicyType").detailext("PolicyName", name);
+			}
 		} else {
-			TraceEvent(SevError, "SerializingInvalidPolicyType").detailext("PolicyName", name);
+			std::string name = policy ? policy->name() : "None";
+			Standalone<StringRef> nameRef = StringRef(name);
+			old_serializer(ar, nameRef);
+			if (name == "One") {
+				dynamic_cast<PolicyOne*>(policy.getPtr())->serialize(ar);
+			} else if (name == "Across") {
+				dynamic_cast<PolicyAcross*>(policy.getPtr())->serialize(ar);
+			} else if (name == "And") {
+				dynamic_cast<PolicyAnd*>(policy.getPtr())->serialize(ar);
+			} else if (name == "None") {
+			} else {
+				TraceEvent(SevError, "SerializingInvalidPolicyType").detail("PolicyName", name);
+			}
 		}
 	} else {
-		std::string name = policy ? policy->name() : "None";
-		Standalone<StringRef> nameRef = StringRef(name);
-		ar& nameRef;
-		if (name == "One") {
-			((PolicyOne*)policy.getPtr())->serialize(ar);
-		} else if (name == "Across") {
-			((PolicyAcross*)policy.getPtr())->serialize(ar);
-		} else if (name == "And") {
-			((PolicyAnd*)policy.getPtr())->serialize(ar);
-		} else if (name == "None") {
-		} else {
-			TraceEvent(SevError, "SerializingInvalidPolicyType").detail("PolicyName", name);
-		}
+		serializer(ar, policy);
 	}
 }
 

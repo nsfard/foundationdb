@@ -610,7 +610,8 @@ void showArena(ArenaBlock* a, ArenaBlock* parent) {
 }
 
 void arenaTest() {
-	BinaryWriter wr(AssumeVersion(currentProtocolVersion));
+	BinaryWriter wr(AssumeVersion(g_network->protocolVersion()));
+	constexpr flat_buffers::FileIdentifier test2_identifier = 6770515;
 	{
 		Arena arena;
 		VectorRef<StringRef> test;
@@ -622,13 +623,13 @@ void arenaTest() {
 			for (auto j = i->begin(); j != i->end(); ++j) cout << *j;
 		cout << endl;
 
-		wr << test;
+		serialize_fake_root(wr, test2_identifier, test);
 	}
 	{
 		Arena arena2;
 		VectorRef<StringRef> test2;
-		BinaryReader reader(wr.getData(), wr.getLength(), AssumeVersion(currentProtocolVersion));
-		reader >> test2 >> arena2;
+		BinaryReader reader(wr.getData(), wr.getLength(), AssumeVersion(g_network->protocolVersion()));
+		serialize_fake_root(reader, test2_identifier, test2, arena2);
 
 		for (auto i = test2.begin(); i != test2.end(); ++i)
 			for (auto j = i->begin(); j != i->end(); ++j) cout << *j;
@@ -1022,7 +1023,7 @@ ACTOR void cycle(FutureStream<Void> in, PromiseStream<Void> out, int* ptotal) {
 	loop {
 		waitNext(in);
 		(*ptotal)++;
-		out.send(_);
+		out.send(Void());
 	}
 }
 

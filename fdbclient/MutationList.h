@@ -26,6 +26,7 @@
 #include "CommitTransaction.h"
 
 struct MutationListRef {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 8162201;
 	// Represents an ordered, but not random-access, list of mutations that can be O(1) deserialized and
 	// quickly serialized, (forward) iterated or appended to.
 
@@ -130,7 +131,7 @@ public:
 
 	template <class Ar>
 	void serialize_load(Ar& ar) {
-		ar& totalBytes;
+		old_serializer(ar, totalBytes);
 
 		if (totalBytes > 0) {
 			blob_begin = blob_end = new (ar.arena()) Blob;
@@ -141,7 +142,7 @@ public:
 	}
 	template <class Ar>
 	void serialize_save(Ar& ar) const {
-		ar& totalBytes;
+		old_serializer(ar, totalBytes);
 		for (auto b = blob_begin; b; b = b->next) ar.serializeBytes(b->data);
 	}
 
@@ -171,7 +172,32 @@ private:
 
 	Blob *blob_begin, *blob_end;
 	int totalBytes;
+	friend struct flat_buffers::dynamic_size_traits<MutationListRef>;
 };
+
+namespace flat_buffers {
+
+template <>
+struct dynamic_size_traits<MutationListRef> : std::true_type {
+	static WriteRawMemory save(const MutationListRef& list) {
+		WriteRawMemory result;
+		for (auto b = list.blob_begin; b != nullptr; b = b->next) {
+			result.blocks.push_back({ unownedPtr(b->data.begin()), b->data.size() });
+		}
+		return result;
+	}
+
+	template <class Context>
+	static void load(const uint8_t* data, size_t size, MutationListRef& list, Context& context) {
+		list.totalBytes = size;
+		list.blob_begin = list.blob_end = new (context.arena()) MutationListRef::Blob;
+		list.blob_begin->next = nullptr;
+		list.blob_begin->data = StringRef(data, size);
+	}
+};
+
+} // namespace flat_buffers
+
 typedef Standalone<MutationListRef> MutationList;
 
 template <class Ar>

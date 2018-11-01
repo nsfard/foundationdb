@@ -736,7 +736,7 @@ struct LogPushData : NonCopyable {
 		for (auto& log : logSystem->getLogSystemConfig().tLogs) {
 			if (log.isLocal) {
 				for (int i = 0; i < log.tLogs.size(); i++) {
-					messagesWriter.push_back(BinaryWriter(AssumeVersion(currentProtocolVersion)));
+					messagesWriter.push_back(BinaryWriter(AssumeVersion(oldProtocolVersion)));
 				}
 			}
 		}
@@ -760,10 +760,11 @@ struct LogPushData : NonCopyable {
 		}
 		uint32_t subseq = this->subsequence++;
 		for (int loc : msg_locations) {
-			messagesWriter[loc] << uint32_t(rawMessageWithoutLength.size() + sizeof(subseq) + sizeof(uint16_t) +
-			                                sizeof(Tag) * prev_tags.size())
-			                    << subseq << uint16_t(prev_tags.size());
-			for (auto& tag : prev_tags) messagesWriter[loc] << tag;
+			old_serializer(messagesWriter[loc],
+			               uint32_t(rawMessageWithoutLength.size() + sizeof(subseq) + sizeof(uint16_t) +
+			                        sizeof(Tag) * prev_tags.size()),
+			               subseq, uint16_t(prev_tags.size()));
+			for (auto& tag : prev_tags) old_serializer(messagesWriter[loc], tag);
 			messagesWriter[loc].serializeBytes(rawMessageWithoutLength);
 		}
 	}
@@ -785,9 +786,9 @@ struct LogPushData : NonCopyable {
 			// FIXME: memcpy after the first time
 			BinaryWriter& wr = messagesWriter[loc];
 			int offset = wr.getLength();
-			wr << uint32_t(0) << subseq << uint16_t(prev_tags.size());
-			for (auto& tag : prev_tags) wr << tag;
-			wr << item;
+			old_serializer(wr, uint32_t(0), subseq, uint16_t(prev_tags.size()));
+			for (auto& tag : prev_tags) old_serializer(wr, tag);
+			old_serializer(wr, item);
 			*(uint32_t*)((uint8_t*)wr.getData() + offset) = wr.getLength() - offset - sizeof(uint32_t);
 		}
 		next_message_tags.clear();

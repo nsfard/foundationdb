@@ -987,7 +987,7 @@ ClusterControllerPriorityInfo getCCPriorityInfo(std::string filePath, ProcessCla
 	BinaryReader br(StringRef(contents), IncludeVersion());
 	ClusterControllerPriorityInfo priorityInfo(ProcessClass::UnsetFit, false,
 	                                           ClusterControllerPriorityInfo::FitnessUnknown);
-	br >> priorityInfo;
+	serializer(br, priorityInfo);
 	if (!br.empty()) {
 		if (g_network->isSimulated()) {
 			ASSERT(false);
@@ -1029,7 +1029,7 @@ ACTOR Future<UID> createAndLockProcessIdFile(std::string folder) {
 			lockFile = _lockFile;
 			processIDUid = g_random->randomUniqueID();
 			BinaryWriter wr(IncludeVersion());
-			wr << processIDUid;
+			serializer(wr, processIDUid);
 			wait(lockFile.get()->write(wr.getData(), wr.getLength(), 0));
 			wait(lockFile.get()->sync());
 		} else {

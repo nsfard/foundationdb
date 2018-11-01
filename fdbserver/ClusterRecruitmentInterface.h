@@ -35,6 +35,8 @@
 // This interface and its serialization depend on slicing, since the client will deserialize only the first part of this
 // structure
 struct ClusterControllerFullInterface {
+	constexpr static flat_buffers::FileIdentifier file_identifier = ClusterControllerClientInterface::file_identifier;
+
 	ClusterInterface clientInterface;
 	RequestStream<struct RecruitFromConfigurationRequest> recruitFromConfiguration;
 	RequestStream<struct RecruitRemoteFromConfigurationRequest> recruitRemoteFromConfiguration;
@@ -61,13 +63,14 @@ struct ClusterControllerFullInterface {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ASSERT(ar.protocolVersion() >= 0x0FDB00A200040001LL);
-		ar& clientInterface& recruitFromConfiguration& recruitRemoteFromConfiguration& recruitStorage& registerWorker&
-		    getWorkers& registerMaster& getServerDBInfo;
+		serializer(ar, clientInterface, recruitFromConfiguration, recruitRemoteFromConfiguration, recruitStorage,
+		           registerWorker, getWorkers, registerMaster, getServerDBInfo);
 	}
 };
 
 struct RecruitFromConfigurationRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 5491855;
+
 	DatabaseConfiguration configuration;
 	bool recruitSeedServers;
 	int maxOldLogRouters;
@@ -80,11 +83,13 @@ struct RecruitFromConfigurationRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& configuration& recruitSeedServers& maxOldLogRouters& reply;
+		serializer(ar, configuration, recruitSeedServers, maxOldLogRouters, reply);
 	}
 };
 
 struct RecruitFromConfigurationReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 2250652;
+
 	vector<WorkerInterface> tLogs;
 	vector<WorkerInterface> satelliteTLogs;
 	vector<WorkerInterface> proxies;
@@ -98,11 +103,14 @@ struct RecruitFromConfigurationReply {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& tLogs& satelliteTLogs& proxies& resolvers& storageServers& oldLogRouters& dcId& satelliteFallback;
+		serializer(ar, tLogs, satelliteTLogs, proxies, resolvers, storageServers, oldLogRouters, dcId,
+		           satelliteFallback);
 	}
 };
 
 struct RecruitRemoteFromConfigurationRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 16769483;
+
 	DatabaseConfiguration configuration;
 	Optional<Key> dcId;
 	int logRouterCount;
@@ -115,44 +123,52 @@ struct RecruitRemoteFromConfigurationRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& configuration& dcId& logRouterCount& reply;
+		serializer(ar, configuration, dcId, logRouterCount, reply);
 	}
 };
 
 struct RecruitRemoteFromConfigurationReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 1841390;
+
 	vector<WorkerInterface> remoteTLogs;
 	vector<WorkerInterface> logRouters;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& remoteTLogs& logRouters;
+		serializer(ar, remoteTLogs, logRouters);
 	}
 };
 
 struct RecruitStorageReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 5311744;
+
 	WorkerInterface worker;
 	ProcessClass processClass;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& worker& processClass;
+		serializer(ar, worker, processClass);
 	}
 };
 
 struct RecruitStorageRequest {
-	std::vector<Optional<Standalone<StringRef>>> excludeMachines; //< Don't recruit any of these machines
+	constexpr static flat_buffers::FileIdentifier file_identifier = 5698442;
+
+	std::vector<TOptional<Standalone<StringRef>>> excludeMachines; //< Don't recruit any of these machines
 	std::vector<AddressExclusion> excludeAddresses; //< Don't recruit any of these addresses
-	std::vector<Optional<Standalone<StringRef>>> includeDCs;
+	std::vector<TOptional<Standalone<StringRef>>> includeDCs;
 	bool criticalRecruitment; //< True if machine classes are to be ignored
 	ReplyPromise<RecruitStorageReply> reply;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& excludeMachines& excludeAddresses& includeDCs& criticalRecruitment& reply;
+		serializer(ar, excludeMachines, excludeAddresses, includeDCs, criticalRecruitment, reply);
 	}
 };
 
 struct RegisterWorkerReply {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 6565314;
+
 	ProcessClass processClass;
 	ClusterControllerPriorityInfo priorityInfo;
 
@@ -163,11 +179,13 @@ struct RegisterWorkerReply {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& processClass& priorityInfo;
+		serializer(ar, processClass, priorityInfo);
 	}
 };
 
 struct RegisterWorkerRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 9839170;
+
 	WorkerInterface wi;
 	ProcessClass initialClass;
 	ProcessClass processClass;
@@ -184,11 +202,12 @@ struct RegisterWorkerRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& wi& initialClass& processClass& priorityInfo& generation& reply;
+		serializer(ar, wi, initialClass, processClass, priorityInfo, generation, reply);
 	}
 };
 
 struct GetWorkersRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 13693358;
 	enum { TESTER_CLASS_ONLY = 0x1, NON_EXCLUDED_PROCESSES_ONLY = 0x2 };
 
 	int flags;
@@ -199,11 +218,13 @@ struct GetWorkersRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& flags& reply;
+		serializer(ar, flags, reply);
 	}
 };
 
 struct RegisterMasterRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 11195350;
+
 	Standalone<StringRef> dbName;
 	UID id;
 	LocalityData mi;
@@ -223,13 +244,14 @@ struct RegisterMasterRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ASSERT(ar.protocolVersion() >= 0x0FDB00A200040001LL);
-		ar& dbName& id& mi& logSystemConfig& proxies& resolvers& recoveryCount& registrationCount& configuration&
-		    priorCommittedLogServers& recoveryState& recoveryStalled& reply;
+		serializer(ar, dbName, id, mi, logSystemConfig, proxies, resolvers, recoveryCount, registrationCount,
+		           configuration, priorCommittedLogServers, recoveryState, recoveryStalled, reply);
 	}
 };
 
 struct GetServerDBInfoRequest {
+	constexpr static flat_buffers::FileIdentifier file_identifier = 15675222;
+
 	UID knownServerInfoID;
 	Standalone<StringRef> issues;
 	std::vector<NetworkAddress> incompatiblePeers;
@@ -237,7 +259,7 @@ struct GetServerDBInfoRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		ar& knownServerInfoID& issues& incompatiblePeers& reply;
+		serializer(ar, knownServerInfoID, issues, incompatiblePeers, reply);
 	}
 };
 

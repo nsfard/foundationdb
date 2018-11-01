@@ -274,10 +274,10 @@ void peekMessagesFromMemory(LogRouterData* self, TLogPeekRequest const& req, Bin
 			}
 
 			currentVersion = it->first;
-			messages << int32_t(-1) << currentVersion;
+			old_serializer(messages, int32_t(-1), currentVersion);
 		}
 
-		messages << it->second.toStringRef();
+		old_serializer(messages, it->second.toStringRef());
 	}
 }
 
