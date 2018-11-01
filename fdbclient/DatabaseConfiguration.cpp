@@ -53,7 +53,7 @@ void parseReplicationPolicy(IRepPolicyRef* policy, ValueRef const& v) {
 
 void parse(std::vector<RegionInfo>* regions, ValueRef const& v) {
 	try {
-		StatusObject statusObj = BinaryReader::fromStringRef<StatusObject>(v, IncludeVersion());
+		StatusObject statusObj = BinaryReader::fromStringRef<SerializedStatusObject>(v, IncludeVersion()).statusObj();
 		StatusArray regionArray = statusObj["regions"].get_array();
 		regions->clear();
 		for (StatusObjectReader dc : regionArray) {

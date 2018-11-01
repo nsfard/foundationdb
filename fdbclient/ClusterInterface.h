@@ -221,44 +221,16 @@ struct StatusRequest {
 struct StatusReply {
 	constexpr static flat_buffers::FileIdentifier file_identifier = 12551650;
 
-	StatusObject statusObj;
-	std::string statusStr;
+	SerializedStatusObject statusObj;
 
 	StatusReply() {}
-	explicit StatusReply(StatusObject obj)
-	  : statusObj(obj), statusStr(json_spirit::write_string(json_spirit::mValue(obj))) {}
+	explicit StatusReply(SerializedStatusObject obj) : statusObj(obj) {}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, statusStr);
-		if (ar.isDeserializing) {
-			json_spirit::mValue mv;
-			json_spirit::read_string(statusStr, mv);
-			statusObj = StatusObject(mv.get_obj());
-		}
+		serializer(ar, statusObj);
 	}
 };
-
-namespace flat_buffers {
-
-template <>
-struct dynamic_size_traits<StatusReply> : std::true_type {
-	using string_traits = dynamic_size_traits<std::string>;
-
-	static WriteRawMemory save(const StatusReply& t) { return string_traits::save(t.statusStr); };
-
-	// Context is an arbitrary type that is plumbed by reference throughout the
-	// load call tree.
-	template <class Context>
-	static void load(const uint8_t* p, size_t n, StatusReply& t, Context& context) {
-		string_traits::load<Context>(p, n, t.statusStr, context);
-		json_spirit::mValue mv;
-		json_spirit::read_string(t.statusStr, mv);
-		t.statusObj = StatusObject(mv.get_obj());
-	}
-};
-
-} // namespace flat_buffers
 
 struct GetClientWorkersRequest {
 	constexpr static flat_buffers::FileIdentifier file_identifier = 16323297;

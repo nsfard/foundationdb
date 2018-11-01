@@ -78,7 +78,7 @@ std::map<std::string, std::string> configForToken(std::string const& mode) {
 
 			StatusObject regionObj;
 			regionObj["regions"] = mv;
-			out[p + key] = BinaryWriter::toValue(regionObj, IncludeVersion()).toString();
+			out[p + key] = BinaryWriter::toValue(SerializedStatusObject{ regionObj }, IncludeVersion()).toString();
 		}
 
 		return out;

@@ -27,6 +27,7 @@
 #include "Status.h"
 #include "json_spirit/json_spirit_writer_template.h"
 #include "fdbrpc/genericactors.actor.h"
+#include <flow/actorcompiler.h>
 
 uint64_t JSONDoc::expires_reference_version = std::numeric_limits<uint64_t>::max();
 
@@ -295,7 +296,7 @@ ACTOR Future<Optional<StatusObject>> clientCoordinatorsStatusFetcher(Reference<C
 
 		*coordinatorsFaultTolerance = (leaderServers.size() - 1) / 2 - coordinatorsUnavailable;
 
-		return statusObj;
+		return Optional<StatusObject>(statusObj);
 	} catch (Error& e) {
 		*quorum_reachable = false;
 		return Optional<StatusObject>();
@@ -362,7 +363,7 @@ ACTOR Future<Optional<StatusObject>> clusterStatusFetcher(ClusterInterface cI, S
 						messages->push_back(
 						    makeMessage("status_incomplete_error", "Cluster encountered an error fetching status."));
 				} else {
-					oStatusObj = result.get().statusObj;
+					oStatusObj = result.get().statusObj.statusObj();
 				}
 				break;
 			}
@@ -434,12 +435,11 @@ ACTOR Future<StatusObject> statusFetcherImpl(Reference<ClusterConnectionFile> f)
 	// This could be read from the JSON but doing so safely is ugly so using a real var.
 	state bool quorum_reachable = false;
 	state int coordinatorsFaultTolerance = 0;
+	state Reference<AsyncVar<Optional<ClusterInterface>>> clusterInterface(new AsyncVar<Optional<ClusterInterface>>);
 
 	try {
 		state int64_t clientTime = time(0);
 
-		state Reference<AsyncVar<Optional<ClusterInterface>>> clusterInterface(
-		    new AsyncVar<Optional<ClusterInterface>>);
 		state Future<Void> leaderMon = monitorLeader<ClusterInterface>(f, clusterInterface);
 
 		StatusObject _statusObjClient =
