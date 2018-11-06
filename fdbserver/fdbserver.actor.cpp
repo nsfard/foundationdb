@@ -1304,13 +1304,13 @@ int main(int argc, char* argv[]) {
 				break;
 			case OPT_PROTOCOLVERSION: {
 				std::string arg = args.OptionArg();
-				for (auto& c : arg) {
-					std::tolower(c);
-				}
+				std::transform(arg.begin(), arg.end(), arg.begin(), std::towlower);
 				if (arg == "random") {
 					protocolVersion = 0;
 				} else if (arg != "on") {
 					protocolVersion = oldProtocolVersion;
+				} else {
+					protocolVersion = newProtocolVersion;
 				}
 				break;
 			}
