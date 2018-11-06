@@ -49,6 +49,6 @@ for i in `seq 100` ; do
     $FUZZ $DATA_BIN $OUT_BIN
     $FLATC -t $TABLE_FBS --raw-binary --strict-json --defaults-json -- $DATA_BIN
     $FLATC -t $TABLE_FBS --raw-binary --strict-json --defaults-json -- $OUT_BIN
-    diff -u <($PYTHON_EXE -m json.tool $DATA_JSON) <(python -m json.tool $OUT_JSON)
+    diff -u <($PYTHON_EXE -m json.tool $DATA_JSON) <($PYTHON_EXE -m json.tool $OUT_JSON)
     rm *
 done
