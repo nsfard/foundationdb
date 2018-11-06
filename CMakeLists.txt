@@ -416,25 +416,23 @@ set(CLUSTER_DESCRIPTION2 ${description2} CACHE STRING "Cluster description")
 
 configure_file(fdb.cluster.cmake ${CMAKE_CURRENT_BINARY_DIR}/fdb.cluster)
 
-
-################################################################################
-# testing
-################################################################################
-enable_testing()
-set(ENABLE_SERIALIZATION_TESTS OFF CACHE BOOL "Enable flatbuffer tests")
-
-################################################################################
-# Directory structure
-################################################################################
-
-include(cmake/InstallLayout.cmake)
-
 ################################################################################
 # Random seed
 ################################################################################
 
 string(RANDOM LENGTH 8 ALPHABET "0123456789abcdef" SEED_)
 set(SEED "0x${SEED_}" CACHE STRING "Random seed for testing")
+
+################################################################################
+# testing
+################################################################################
+enable_testing()
+
+################################################################################
+# Directory structure
+################################################################################
+
+include(cmake/InstallLayout.cmake)
 
 ################################################################################
 # components
@@ -452,6 +450,39 @@ add_subdirectory(fdbcli)
 add_subdirectory(fdbmonitor)
 add_subdirectory(bindings)
 add_subdirectory(fdbbackup)
+
+
+################################################################################
+# flatbuffers test
+################################################################################
+
+set(ENABLE_SERIALIZATION_TESTS OFF CACHE BOOL "Enable flatbuffer tests")
+if (ENABLE_SERIALIZATION_TESTS)
+  set(flatbuffers_test_src_dir ${PROJECT_SOURCE_DIR}/tests/flatbuffers)
+  set(flatbuffers_test_bin_dir ${PROJECT_BINARY_DIR}/tests/flatbuffers)
+  make_directory(${flatbuffers_test_bin_dir})
+  add_custom_command(
+    OUTPUT ${flatbuffers_test_bin_dir}/table.h ${flatbuffers_test_bin_dir}/table.fbs
+    COMMAND ${PYTHON_EXECUTABLE} ${flatbuffers_test_src_dir}/flat_buffers_fuzz.py "${SEED}" cpp > ${flatbuffers_test_bin_dir}/table.h &&
+            ${PYTHON_EXECUTABLE} ${flatbuffers_test_src_dir}/flat_buffers_fuzz.py "${SEED}" fbs > ${flatbuffers_test_bin_dir}/table.fbs
+    DEPENDS ${flatbuffers_test_src_dir}/flat_buffers_fuzz.py
+    COMMENT "Generate flat buffer schema")
+  add_custom_target(tableh DEPENDS ${flatbuffers_test_bin_dir}/table.h)
+
+  add_executable(flat_buffers_fuzz ${flatbuffers_test_src_dir}/flat_buffers_fuzz.cpp)
+  target_link_libraries(flat_buffers_fuzz flow)
+  target_include_directories(flat_buffers_fuzz PRIVATE ${flatbuffers_test_bin_dir})
+  add_dependencies(flat_buffers_fuzz tableh)
+  add_test(
+    NAME flat_buffers_fuzz
+    COMMAND ${flatbuffers_test_src_dir}/flat_buffers_fuzz.sh
+            ${flatbuffers_test_bin_dir}
+            "${SEED}"
+            $<TARGET_FILE:flatc>
+            $<TARGET_FILE:flat_buffers_fuzz>
+            ${flatbuffers_test_src_dir}/flat_buffers_fuzz.py
+            ${PYTHON_EXECUTABLE})
+endif()
 
 include(CPack)
 
