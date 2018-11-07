@@ -119,7 +119,8 @@ bool PolicyOne::validate(std::vector<LocalityEntry> const& solutionSet, Locality
 	return ((solutionSet.size() > 0) && (fromServers->size() > 0));
 }
 
-PolicyAcross::PolicyAcross() {}
+// This constructor should only be used for message traversal
+PolicyAcross::PolicyAcross() : _policy(new PolicyOne()) {}
 
 PolicyAcross::PolicyAcross(const PolicyAcross& other)
   : _count(other._count), _attribKey(other._attribKey), _policy(other._policy) {}
