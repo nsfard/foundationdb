@@ -330,8 +330,8 @@ void old_serializer(Archiver& ar, Values const&... values) {
 }
 
 template <class Archive, class... Items>
-void new_serialize_fake_root_deserialize(Archive& ar, flat_buffers::FileIdentifier file_identifier,
-                                         Items const&... items) {
+void new_serialize_fake_root_serialize(Archive& ar, flat_buffers::FileIdentifier file_identifier,
+                                       Items const&... items) {
 	static_assert(!Archive::isDeserializing);
 	int allocations = 0;
 	int size;
@@ -349,7 +349,7 @@ void new_serialize_fake_root_deserialize(Archive& ar, flat_buffers::FileIdentifi
 
 template <class Archive, class... Items>
 void new_serialize_fake_root(Archive& ar, flat_buffers::FileIdentifier file_identifier, Items const&... items) {
-	new_serialize_fake_root_deserialize(ar, file_identifier, items...);
+	new_serialize_fake_root_serialize(ar, file_identifier, items...);
 }
 
 template <class Archive, class... Items>
@@ -361,7 +361,7 @@ void new_serialize_fake_root(Archive& ar, flat_buffers::FileIdentifier file_iden
 		flat_buffers::load_members(data, context, items...);
 		context.done();
 	} else {
-		new_serialize_fake_root_deserialize(ar, file_identifier, items...);
+		new_serialize_fake_root_serialize(ar, file_identifier, items...);
 	}
 }
 
