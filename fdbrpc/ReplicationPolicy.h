@@ -263,7 +263,25 @@ namespace flat_buffers {
                                                                                                                        \
 		type& get() { return obj; }                                                                                    \
 		const type& get() const { return obj; }                                                                        \
+		type move() {                                                                                                  \
+			auto res = obj;                                                                                            \
+			obj = nullptr;                                                                                             \
+			return res;                                                                                                \
+		}                                                                                                              \
 	};
+
+template <>
+struct object_construction<IRepPolicyRef> {
+	using type = IRepPolicyRef;
+	type _impl;
+
+	object_construction() : _impl(new PolicyOne()){};
+
+	type& get() { return _impl; }
+	const type& get() const { return _impl; }
+
+	type move() { return std::move(_impl); }
+};
 
 POLICY_CONSTRUCTION_WRAPPER(PolicyOne);
 POLICY_CONSTRUCTION_WRAPPER(PolicyAcross);

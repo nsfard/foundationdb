@@ -695,8 +695,11 @@ struct TraverseMessageTypes {
 		using VectorTraits = vector_like_traits<VectorLike>;
 		using T = typename VectorTraits::value_type;
 		static_assert(!is_union_like<T>, "vector<union> not yet supported");
-		T t;
-		(*this)(t);
+		// we don't need to check for recursion here because the next call
+		// to operator() will do that and we don't generate a vtable for the
+		// vector-like type itself
+		object_construction<T> t;
+		(*this)(t.get());
 	}
 
 	template <class UnionLike>
