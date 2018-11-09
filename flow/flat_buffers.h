@@ -33,6 +33,8 @@
 #include <vector>
 #include <cstring>
 #include <array>
+#include <typeinfo>
+#include <typeindex>
 
 namespace flat_buffers {
 
@@ -678,8 +680,13 @@ struct InsertVTableLambda;
 struct TraverseMessageTypes {
 	InsertVTableLambda& f;
 
+	bool vtableGeneratedBefore(const std::type_index&);
+
 	template <class Member>
 	std::enable_if_t<expect_serialize_member<Member>> operator()(const Member& member) {
+		if (vtableGeneratedBefore(typeid(Member))) {
+			return;
+		}
 		if constexpr (serializable_traits<Member>::value) {
 			serializable_traits<Member>::serialize(f, const_cast<Member&>(member));
 		} else {
@@ -723,6 +730,7 @@ private:
 struct InsertVTableLambda {
 	static constexpr bool isDeserializing = true;
 	std::set<const VTable*>& vtables;
+	std::set<std::type_index>& known_types;
 
 	template <class... Members>
 	void operator()(const Members&... members) {
@@ -737,31 +745,35 @@ int vec_bytes(const T& begin, const T& end) {
 }
 
 template <class Root>
+VTableSet get_vtableset_impl(const Root& root) {
+	std::set<const VTable*> vtables;
+	std::set<std::type_index> known_types;
+	InsertVTableLambda vlambda{ vtables, known_types };
+	if constexpr (serializable_traits<Root>::value) {
+		serializable_traits<Root>::serialize(vlambda, const_cast<Root&>(root));
+	} else {
+		const_cast<Root&>(root).serialize(vlambda);
+	}
+	size_t size = 0;
+	for (const auto* vtable : vtables) {
+		size += vec_bytes(vtable->begin(), vtable->end());
+	}
+	std::vector<uint8_t> packed_tables(size);
+	int i = 0;
+	std::map<const VTable*, int> offsets;
+	for (const auto* vtable : vtables) {
+		memcpy(&packed_tables[i], reinterpret_cast<const uint8_t*>(&(*vtable)[0]),
+		       vec_bytes(vtable->begin(), vtable->end()));
+		offsets[vtable] = i;
+		i += vec_bytes(vtable->begin(), vtable->end());
+	}
+	return VTableSet{ offsets, packed_tables };
+}
+
+template <class Root>
 const VTableSet* get_vtableset(const Root& root) {
-	static VTableSet vtables = [&]() {
-		std::set<const VTable*> vtables;
-		InsertVTableLambda vlambda{ vtables };
-		if constexpr (serializable_traits<Root>::value) {
-			serializable_traits<Root>::serialize(vlambda, const_cast<Root&>(root));
-		} else {
-			const_cast<Root&>(root).serialize(vlambda);
-		}
-		size_t size = 0;
-		for (const auto* vtable : vtables) {
-			size += vec_bytes(vtable->begin(), vtable->end());
-		}
-		std::vector<uint8_t> packed_tables(size);
-		int i = 0;
-		std::map<const VTable*, int> offsets;
-		for (const auto* vtable : vtables) {
-			memcpy(&packed_tables[i], reinterpret_cast<const uint8_t*>(&(*vtable)[0]),
-			       vec_bytes(vtable->begin(), vtable->end()));
-			offsets[vtable] = i;
-			i += vec_bytes(vtable->begin(), vtable->end());
-		}
-		return VTableSet{ offsets, packed_tables };
-	}();
-	return &vtables;
+	static VTableSet result = get_vtableset_impl(root);
+	return &result;
 }
 
 template <class Root, class Writer>
@@ -820,15 +832,15 @@ private:
 		if constexpr (Alternative < pack_size(typename UnionTraits::alternatives{})) {
 			if (type_tag == Alternative) {
 				using AlternativeT = index_t<Alternative, typename UnionTraits::alternatives>;
-				AlternativeT alternative;
+				object_construction<AlternativeT> alternative;
 				if constexpr (use_indirection<AlternativeT>) {
-					load_helper(alternative, current, context);
+					load_helper(alternative.get(), current, context);
 				} else {
 					uint32_t current_offset = interpret_as<uint32_t>(current);
 					current += current_offset;
-					load_helper(alternative, current, context);
+					load_helper(alternative.get(), current, context);
 				}
-				UnionTraits::template assign<Alternative>(member, std::move(alternative));
+				UnionTraits::template assign<Alternative>(member, std::move(alternative.move()));
 			} else {
 				load_<Alternative + 1>(type_tag, member);
 			}

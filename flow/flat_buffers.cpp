@@ -29,6 +29,10 @@ namespace flat_buffers {
 
 namespace detail {
 
+bool TraverseMessageTypes::vtableGeneratedBefore(const std::type_index& idx) {
+	return !f.known_types.insert(idx).second;
+}
+
 VTable generate_vtable(size_t numMembers, const std::vector<unsigned>& members,
                        const std::vector<unsigned>& alignments) {
 	if (numMembers == 0) {
