@@ -354,7 +354,7 @@ public:
 
 	bool isError() const { return error.code() != invalid_error_code; }
 	bool isError(int code) const { return error.code() == code; }
-	Error getError() const {
+	const Error& getError() const {
 		ASSERT(isError());
 		return error;
 	}

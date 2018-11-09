@@ -33,6 +33,8 @@
 #include <vector>
 #include <cstring>
 #include <array>
+#include <typeinfo>
+#include <typeindex>
 
 namespace flat_buffers {
 
@@ -170,6 +172,8 @@ struct object_construction {
 	T obj;
 
 	object_construction() : obj() {}
+	object_construction(const T& o) : obj(o) {}
+	object_construction(T&& o) : obj(std::move(o)) {}
 
 	T& get() { return obj; }
 	const T& get() const { return obj; }
@@ -316,11 +320,14 @@ struct scalar_traits<T, std::enable_if_t<std::is_integral<T>::value || std::is_f
 	}
 };
 
+template <class F, class... Items>
+void serializer(F& fun, Items&... items);
+
 template <class F, class S>
 struct serializable_traits<std::pair<F, S>> : std::true_type {
 	template <class Archiver>
 	static void serialize(Archiver& ar, std::pair<F, S>& p) {
-		serializer(ar, p.first, p.second);
+		flat_buffers::serializer(ar, p.first, p.second);
 	}
 };
 
@@ -678,8 +685,13 @@ struct InsertVTableLambda;
 struct TraverseMessageTypes {
 	InsertVTableLambda& f;
 
+	bool vtableGeneratedBefore(const std::type_index&);
+
 	template <class Member>
 	std::enable_if_t<expect_serialize_member<Member>> operator()(const Member& member) {
+		if (vtableGeneratedBefore(typeid(Member))) {
+			return;
+		}
 		if constexpr (serializable_traits<Member>::value) {
 			serializable_traits<Member>::serialize(f, const_cast<Member&>(member));
 		} else {
@@ -695,8 +707,11 @@ struct TraverseMessageTypes {
 		using VectorTraits = vector_like_traits<VectorLike>;
 		using T = typename VectorTraits::value_type;
 		static_assert(!is_union_like<T>, "vector<union> not yet supported");
-		T t;
-		(*this)(t);
+		// we don't need to check for recursion here because the next call
+		// to operator() will do that and we don't generate a vtable for the
+		// vector-like type itself
+		object_construction<T> t;
+		(*this)(t.get());
 	}
 
 	template <class UnionLike>
@@ -720,6 +735,7 @@ private:
 struct InsertVTableLambda {
 	static constexpr bool isDeserializing = true;
 	std::set<const VTable*>& vtables;
+	std::set<std::type_index>& known_types;
 
 	template <class... Members>
 	void operator()(const Members&... members) {
@@ -734,31 +750,35 @@ int vec_bytes(const T& begin, const T& end) {
 }
 
 template <class Root>
+VTableSet get_vtableset_impl(const Root& root) {
+	std::set<const VTable*> vtables;
+	std::set<std::type_index> known_types;
+	InsertVTableLambda vlambda{ vtables, known_types };
+	if constexpr (serializable_traits<Root>::value) {
+		serializable_traits<Root>::serialize(vlambda, const_cast<Root&>(root));
+	} else {
+		const_cast<Root&>(root).serialize(vlambda);
+	}
+	size_t size = 0;
+	for (const auto* vtable : vtables) {
+		size += vec_bytes(vtable->begin(), vtable->end());
+	}
+	std::vector<uint8_t> packed_tables(size);
+	int i = 0;
+	std::map<const VTable*, int> offsets;
+	for (const auto* vtable : vtables) {
+		memcpy(&packed_tables[i], reinterpret_cast<const uint8_t*>(&(*vtable)[0]),
+		       vec_bytes(vtable->begin(), vtable->end()));
+		offsets[vtable] = i;
+		i += vec_bytes(vtable->begin(), vtable->end());
+	}
+	return VTableSet{ offsets, packed_tables };
+}
+
+template <class Root>
 const VTableSet* get_vtableset(const Root& root) {
-	static VTableSet vtables = [&]() {
-		std::set<const VTable*> vtables;
-		InsertVTableLambda vlambda{ vtables };
-		if constexpr (serializable_traits<Root>::value) {
-			serializable_traits<Root>::serialize(vlambda, const_cast<Root&>(root));
-		} else {
-			const_cast<Root&>(root).serialize(vlambda);
-		}
-		size_t size = 0;
-		for (const auto* vtable : vtables) {
-			size += vec_bytes(vtable->begin(), vtable->end());
-		}
-		std::vector<uint8_t> packed_tables(size);
-		int i = 0;
-		std::map<const VTable*, int> offsets;
-		for (const auto* vtable : vtables) {
-			memcpy(&packed_tables[i], reinterpret_cast<const uint8_t*>(&(*vtable)[0]),
-			       vec_bytes(vtable->begin(), vtable->end()));
-			offsets[vtable] = i;
-			i += vec_bytes(vtable->begin(), vtable->end());
-		}
-		return VTableSet{ offsets, packed_tables };
-	}();
-	return &vtables;
+	static VTableSet result = get_vtableset_impl(root);
+	return &result;
 }
 
 template <class Root, class Writer>
@@ -817,15 +837,15 @@ private:
 		if constexpr (Alternative < pack_size(typename UnionTraits::alternatives{})) {
 			if (type_tag == Alternative) {
 				using AlternativeT = index_t<Alternative, typename UnionTraits::alternatives>;
-				AlternativeT alternative;
+				object_construction<AlternativeT> alternative;
 				if constexpr (use_indirection<AlternativeT>) {
-					load_helper(alternative, current, context);
+					load_helper(alternative.get(), current, context);
 				} else {
 					uint32_t current_offset = interpret_as<uint32_t>(current);
 					current += current_offset;
-					load_helper(alternative, current, context);
+					load_helper(alternative.get(), current, context);
 				}
-				UnionTraits::template assign<Alternative>(member, std::move(alternative));
+				UnionTraits::template assign<Alternative>(member, std::move(alternative.move()));
 			} else {
 				load_<Alternative + 1>(type_tag, member);
 			}
@@ -1199,6 +1219,7 @@ struct EnsureTable {
 	constexpr static flat_buffers::FileIdentifier file_identifier = FileIdentifierFor<T>::value;
 	EnsureTable() = default;
 	EnsureTable(const object_construction<T>& t) : t(t) {}
+	EnsureTable(const T& t) : t(t) {}
 	template <class Archive>
 	void serialize(Archive& ar) {
 		if constexpr (detail::expect_serialize_member<T>) {

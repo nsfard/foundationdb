@@ -159,8 +159,7 @@ template <>
 struct serializable_traits<DBCoreState> : std::true_type {
 	template <class Archiver>
 	static void serialize(Archiver& ar, DBCoreState& self) {
-		::serializer(ar, self.tLogs[0].tLogs, self.tLogs[0].tLogWriteAntiQuorum, self.recoveryCount,
-		             self.tLogs[0].tLogReplicationFactor, self.logSystemType);
+		::serializer(ar, self.tLogs, self.logRouterTags, self.oldTLogData, self.recoveryCount, self.logSystemType);
 	}
 };
 
