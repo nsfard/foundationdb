@@ -353,7 +353,7 @@ struct union_like_traits<IReplicationPolicy*> : std::true_type {
 	template <int i, class Alternative>
 	static const void assign(Member& policy, const Alternative& impl) {
 		if (policy != nullptr) {
-			delete policy;
+			policy->delref();
 		}
 		policy = impl;
 	}
