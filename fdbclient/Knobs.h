@@ -23,7 +23,6 @@
 #pragma once
 
 #include "flow/Knobs.h"
-#include "flow/flow.h"
 
 class ClientKnobs : public Knobs {
 public:

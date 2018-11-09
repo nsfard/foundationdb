@@ -172,6 +172,8 @@ struct object_construction {
 	T obj;
 
 	object_construction() : obj() {}
+	object_construction(const T& o) : obj(o) {}
+	object_construction(T&& o) : obj(std::move(o)) {}
 
 	T& get() { return obj; }
 	const T& get() const { return obj; }
@@ -318,11 +320,14 @@ struct scalar_traits<T, std::enable_if_t<std::is_integral<T>::value || std::is_f
 	}
 };
 
+template <class F, class... Items>
+void serializer(F& fun, Items&... items);
+
 template <class F, class S>
 struct serializable_traits<std::pair<F, S>> : std::true_type {
 	template <class Archiver>
 	static void serialize(Archiver& ar, std::pair<F, S>& p) {
-		serializer(ar, p.first, p.second);
+		flat_buffers::serializer(ar, p.first, p.second);
 	}
 };
 
@@ -1214,6 +1219,7 @@ struct EnsureTable {
 	constexpr static flat_buffers::FileIdentifier file_identifier = FileIdentifierFor<T>::value;
 	EnsureTable() = default;
 	EnsureTable(const object_construction<T>& t) : t(t) {}
+	EnsureTable(const T& t) : t(t) {}
 	template <class Archive>
 	void serialize(Archive& ar) {
 		if constexpr (detail::expect_serialize_member<T>) {

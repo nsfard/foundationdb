@@ -18,8 +18,8 @@
  * limitations under the License.
  */
 
+#include <flow/serialize.h>
 #include "Knobs.h"
-#include "FDBTypes.h"
 #include "SystemData.h"
 
 ClientKnobs const* CLIENT_KNOBS = new ClientKnobs();
