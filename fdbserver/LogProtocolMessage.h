@@ -57,6 +57,7 @@ struct LogProtocolMessage {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
+		static_assert(only_old_protocol<Ar>, "Only old archivers can deserialize this");
 		uint8_t poly = MutationRef::Reserved_For_LogProtocolMessage;
 		old_serializer(ar, poly);
 		applyVersionStartingHere(ar, IncludeVersion(oldProtocolVersion));
