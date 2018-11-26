@@ -100,6 +100,18 @@ struct LoadContext {
 	std::vector<std::function<void()>> doAfter;
 	LoadContext(Ar& ar) : ar(ar) {}
 	Arena& arena() { return ar.arena(); }
+
+	const uint8_t* tryReadZeroCopy(const uint8_t* ptr, unsigned len) {
+		if constexpr (Ar::ownsUnderlyingMemory) {
+			return ptr;
+		} else {
+			if (len == 0) return nullptr;
+			uint8_t* dat = new (arena()) uint8_t[len];
+			std::copy(ptr, ptr + len, dat);
+			return dat;
+		}
+	}
+
 	void done() const {
 		for (auto& f : doAfter) {
 			f();
@@ -192,7 +204,7 @@ struct CallArchiver
 	explicit CallArchiver(Archive& ar) : ar(ar) {}
 
 	template <class... Items>
-	void operator()(Items... items) {
+	void operator()(Items&... items) {
 		old_serializer(ar, items...);
 	}
 };
@@ -695,6 +707,7 @@ private:
 class ArenaReader {
 public:
 	static constexpr int isDeserializing = 1;
+	static constexpr bool ownsUnderlyingMemory = true;
 	typedef ArenaReader READER;
 	using OLD_ARCHIVE = void;
 
@@ -757,6 +770,7 @@ private:
 class BinaryReader {
 public:
 	static constexpr int isDeserializing = 1;
+	static constexpr bool ownsUnderlyingMemory = false;
 	typedef BinaryReader READER;
 	using OLD_ARCHIVE = void;
 
@@ -919,8 +933,30 @@ struct ISerializeSource {
 
 template <class T>
 struct MakeSerializeSource : ISerializeSource {
-	virtual void serializePacketWriter(PacketWriter& w) const { ((T const*)this)->serialize(w); }
-	virtual void serializeBinaryWriter(BinaryWriter& w) const { ((T const*)this)->serialize(w); }
+
+	void verifySerialization(uint64_t protocolVersion) const {
+		if constexpr (std::is_default_constructible<T>::value) {
+			BinaryWriter writer(AssumeVersion(protocolVersion));
+			((T const*)this)->serialize(writer);
+			T other;
+			BinaryReader reader(writer.toStringRef(), AssumeVersion(protocolVersion));
+			serializer(reader, other);
+			BinaryWriter writer2(AssumeVersion(protocolVersion));
+			serializer(writer2, other);
+			ASSERT(writer.toStringRef().size() != writer2.toStringRef().size());
+			ASSERT(memcmp(writer.toStringRef().begin(), writer2.toStringRef().begin(), writer.toStringRef().size()) ==
+			       0);
+		}
+	}
+
+	virtual void serializePacketWriter(PacketWriter& w) const {
+		verifySerialization(w.protocolVersion());
+		((T const*)this)->serialize(w);
+	}
+	virtual void serializeBinaryWriter(BinaryWriter& w) const {
+		verifySerialization(w.protocolVersion());
+		((T const*)this)->serialize(w);
+	}
 };
 
 template <class T>

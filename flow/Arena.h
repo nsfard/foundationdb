@@ -655,9 +655,7 @@ struct dynamic_size_traits<StringRef> : std::true_type {
 
 	template <class Context>
 	static void load(const uint8_t* ptr, size_t sz, StringRef& str, Context& context) {
-		// TODO(anoyes): Zero-copy is possible here for ArenaReader, since ptr
-		// should be owned by context.arena()
-		str = StringRef(context.arena(), ptr, sz);
+		str = StringRef(context.tryReadZeroCopy(ptr, sz), sz);
 	}
 };
 
