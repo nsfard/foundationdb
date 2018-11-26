@@ -20,6 +20,8 @@
 
 #include "flat_buffers.h"
 #include "UnitTest.h"
+#include "Arena.h"
+#include "serialize.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -468,6 +470,41 @@ TEST_CASE("flow/FlatBuffers/file_identifier") {
 	out = save_members(arena, file_identifier);
 	// print_buffer(out, arena.get_size(out));
 	ASSERT(read_file_identifier(out) == file_identifier);
+	return Void();
+}
+
+TEST_CASE("flow/FlatBuffers/VectorRef") {
+	// this test tests a few weird memory properties of
+	// serialized arenas. This is why it uses weird scoping
+
+	// first we construct the data to serialize/deserialize
+	// so we can compare it afterwards
+	std::vector<std::string> src;
+	src.push_back("Foo");
+	src.push_back("Bar");
+	::Arena vecArena;
+	VectorRef<StringRef> outVec;
+	{
+		::Arena readerArena;
+		StringRef serializedVector;
+		{
+			::Arena arena;
+			VectorRef<StringRef> vec;
+			for (const auto& str : src) {
+				vec.push_back(arena, str);
+			}
+			BinaryWriter writer(IncludeVersion());
+			::serialize_fake_root(writer, FileIdentifierFor<decltype(vec)>::value, arena, vec);
+			serializedVector = StringRef(readerArena, writer.toStringRef());
+		}
+		ArenaReader reader(readerArena, serializedVector, IncludeVersion());
+		::serialize_fake_root(reader, FileIdentifierFor<decltype(outVec)>::value, vecArena, outVec);
+	}
+	ASSERT(src.size() == outVec.size());
+	for (int i = 0; i < src.size(); ++i) {
+		auto str = outVec[i].toString();
+		ASSERT(str == src[i]);
+	}
 	return Void();
 }
 
