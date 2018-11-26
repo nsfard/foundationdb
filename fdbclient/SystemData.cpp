@@ -247,13 +247,13 @@ const Value datacenterReplicasValue(int const& replicas) {
 Optional<Value> decodeDatacenterReplicasKey(KeyRef const& key) {
 	Optional<Value> dcID;
 	BinaryReader rd(key.removePrefix(datacenterReplicasKeys.begin), AssumeVersion(oldProtocolVersion));
-	serialize_fake_root(rd, 13046283, dcID);
+	serializer(rd, dcID);
 	return dcID;
 }
 int decodeDatacenterReplicasValue(ValueRef const& value) {
 	int s;
 	BinaryReader reader(value, IncludeVersion());
-	serialize_fake_root(reader, 15778837, s);
+	serializer(reader, s);
 	return s;
 }
 
