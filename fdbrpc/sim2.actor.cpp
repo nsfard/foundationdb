@@ -2006,9 +2006,9 @@ Future<Reference<class IAsyncFile>> Sim2FileSystem::open(std::string filename, i
 	if (flags & IAsyncFile::OPEN_UNCACHED) {
 		auto& machineCache = g_simulator.getCurrentProcess()->machine->openFiles;
 		std::string actualFilename = abspath(filename);
-		if (machineCache.find(filename) == machineCache.end()) {
+		if (machineCache.find(actualFilename) == machineCache.end()) {
 			if (flags & IAsyncFile::OPEN_ATOMIC_WRITE_AND_CREATE) {
-				actualFilename = filename + ".part";
+				actualFilename = actualFilename + ".part";
 				auto partFile = machineCache.find(actualFilename);
 				if (partFile != machineCache.end()) {
 					Future<Reference<IAsyncFile>> f = AsyncFileDetachable::open(partFile->second);
