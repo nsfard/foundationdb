@@ -2,10 +2,9 @@ def buildScmInfo
 def cancelled = false
 stage("Build") {
     node('test-dynamic-slave') {
-        cleanWs()
 
         sfScmInfo = checkout([$class: 'GitSCM',
-            branches: [[name: '*']],
+            branches: [[name: '*/master']],
             doGenerateSubmoduleConfigurations: false,
             extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'snowflake']],
             submoduleCfg: [],
@@ -30,12 +29,18 @@ stage("Build") {
                 |# want to mask the list, but we should put it in the snowflake-internal repo (fdb_snowflake.git)
                 |#
                 |# $CHANGE_AUTHOR is set to the github user that authored the change (appears to not rely
-                |# on the users's config, so shouldn't be spoofable.
+                |# on the users's config, so shouldn't be spoofable.  If unset, we're not building a PR.
                 |#
                 |# I think if our user is not on the whitelist, we want to abort, if possible, instead of failing?
                 |
                 |# This list is sorted by username!  Don't make me come find you!
+                |set -x
+                |env
                 |set +x
+                |if [[ -z $CHANGE_AUTHOR ]]; then
+                |  echo "Not a pull-request, skipping whitelist check"
+                |  exit 0
+                |fi
                 |
                 |whitelist=(
                 |amotivala           # (Ashish)
@@ -78,10 +83,9 @@ stage("Build") {
 
 def makeTestStep(iteration) {
     return {
-        node("test-dynamic-slave") {
-            cleanWs()
+        node("test-dynamic-slave2") {
             sfScmInfo = checkout([$class: 'GitSCM',
-                branches: [[name: '*']],
+                branches: [[name: '*/master']],
                 doGenerateSubmoduleConfigurations: false,
                 extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'snowflake']],
                 submoduleCfg: [],
@@ -127,11 +131,10 @@ if (!cancelled) {
     }
 
     stage("Report") {
-        node('test-dynamic-slave') {
-            cleanWs()
+        node('test-dynamic-slave2') {
 
             sfScmInfo = checkout([$class: 'GitSCM',
-                branches: [[name: '*']],
+                branches: [[name: '*/master']],
                 doGenerateSubmoduleConfigurations: false,
                 extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'snowflake']],
                 submoduleCfg: [],
