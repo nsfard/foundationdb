@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+SCRIPTDIR=$(readlink -f $(dirname $0))
+
 virtualenv -p python3.4 venv
 source venv/bin/activate
 git config --global user.name jenkins
@@ -8,3 +10,4 @@ cd snowflake/jenkins
 ./build.sh sql_create_report
 GIT_TREE=($(cd foundationdb && git rev-parse HEAD^{tree}))
 cp -f fdb6-report.txt fdb6-report-${GIT_TREE}.txt
+$SCRIPTDIR/pr_publish.sh fdb6-report-${GIT_TREE}.txt
