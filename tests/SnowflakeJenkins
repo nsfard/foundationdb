@@ -1,4 +1,5 @@
 def buildScmInfo
+def cancelled = false
 stage("Build") {
     node('test-dynamic-slave') {
         cleanWs()
@@ -22,16 +23,54 @@ stage("Build") {
             ])
         println("$buildScmInfo")
 
+        try {
+            sh '''
+                |# This script is inlined in the jenkinsfile so that it's not overridden by
+                |# local changes in the pull-request.  We could move it to a script, if we
+                |# want to mask the list, but we should put it in the snowflake-internal repo (fdb_snowflake.git)
+                |#
+                |# $CHANGE_AUTHOR is set to the github user that authored the change (appears to not rely
+                |# on the users's config, so shouldn't be spoofable.
+                |#
+                |# I think if our user is not on the whitelist, we want to abort, if possible, instead of failing?
+                |
+                |# This list is sorted by username!  Don't make me come find you!
+                |set +x
+                |
+                |whitelist=(
+                |amotivala           # (Ashish)
+                |atn34               # (Andrew)
+                |dyoungworth         # (David)
+                |fzhjon              # (Jon)
+                |kaomakino           # (Kao)
+                |marcmac            # (Marc)
+                |mpilman             # (Markus)
+                |negoyal             # (Neelam)
+                |senthil-ram         # (Senthil)
+                |tclinken            # (Trevor)
+                |zjuLcg              # (Chaoguang)
+                |)
+                |count=${#whitelist[@]}
+                |search=$(echo $CHANGE_AUTHOR | tr '[:upper:]' '[:lower:]')
+                |for ((i=0;i < $count;i++)) {
+                |    item=$(echo ${whitelist[$i]} | tr '[:upper:]' '[:lower:]')
+                |    if [ "${item}" == "${search}" ]; then
+                |        echo "User ${CHANGE_AUTHOR} is on the whitelist"
+                |        exit 0
+                |    fi
+                |}
+                |echo "User ${CHANGE_AUTHOR} is NOT on the whitelist - Aborting"
+                |exit 1 # TODO figure out how to abort the job
+              '''.stripMargin()
+        } catch(e) {
+            currentBuild.result = 'ABORTED'
+            cancelled = true
+            return
+        }
+
         sh """
             |export GIT_SPECIFIER=${buildScmInfo.GIT_COMMIT}
-            |virtualenv -p python3.4 venv
-            |source venv/bin/activate
-            |pip3 install docker-compose
-            |docker-compose --version
-            |git config --global user.name jenkins
-            |git config --global user.email fdb-devs@snowflake.net
-            |cd snowflake/jenkins
-            |./build.sh check_uploaded package sql sql_upload upload
+            |snowflake/jenkins/foundationdb/tests/jenkins/pr_build.sh
           """.stripMargin()
     }
 }
@@ -59,29 +98,8 @@ def makeTestStep(iteration) {
                 ])
             println("$scmInfo")
             sh """
-                |# Clean up the jenkins output; gets messy with too many iterations
-                |set +x
-                |exec 3>&1
-                |exec 1> \$WORKSPACE/setup_${iteration}.log
-                |exec 2>&1
-                |
-                |export GIT_SPECIFIER=${scmInfo.GIT_COMMIT}
-                |virtualenv -p python3.4 venv
-                |source venv/bin/activate
-                |pip3 install docker-compose
-                |docker-compose --version
-                |git config --global user.name jenkins
-                |git config --global user.email fdb-devs@snowflake.net
-                |
-                |cd snowflake/jenkins
-                |echo Iteration ${iteration} building >&3
-                |./build.sh configure download test sql sql_upload > \$WORKSPACE/iteration_${iteration}.log 2>&1
-                |rc=\$?
-                |seed=\$(find . -name traces.json -exec grep -m 1 CMakeSEED {} \\; | awk '{print \$2}'  | head -1 | tr -d '"}')
-                |echo Iteration ${iteration} completed with \$rc - seed \$seed >&3
-                |mv \$WORKSPACE/iteration_${iteration}.log \$WORKSPACE/iteration_${iteration}_\${seed}.log
-                |find . -name traces.json -exec gzip -c {} > \$WORKSPACE/traces_${iteration}_\${seed}.json.gz \\;
-                |#cat \$WORKSPACE/iteration_${iteration}.log
+                |export PR_ITERATION=${iteration}
+                |snowflake/jenkins/foundationdb/tests/jenkins/pr_test_one.sh
               """.stripMargin()
               archiveArtifacts artifacts: 'setup_*log,iteration_*log,traces_*.json.gz',
                 optional: true,
@@ -90,20 +108,55 @@ def makeTestStep(iteration) {
     }
 }
 
-stage("Test") {
-    def testSteps = [:]
-    for (int i = 0; i < 4; i++) {
-        testSteps["Iteration ${i}"] = makeTestStep(i)
-    }
-    println(testSteps)
+if (!cancelled) {
+    stage("Test") {
+        def testSteps = [:]
+        for (int i = 0; i < 16; i++) {
+            testSteps["Iteration ${i}"] = makeTestStep(i)
+        }
+        println(testSteps)
 
-    parallel testSteps
-    build job: "NotifyGitHub",
-        parameters: [
-            string(name: 'pr_branch', value: buildScmInfo.GIT_BRANCH),
-            string(name: 'publish_url', value: "https://foo.bar/stuff")
-        ],
-        propagate: false
+        parallel testSteps
+        build job: "NotifyGitHub",
+            parameters: [
+                string(name: 'pr_branch', value: buildScmInfo.GIT_BRANCH),
+                string(name: 'publish_url', value: "https://foo.bar/stuff")
+            ],
+            propagate: false
+    }
+
+    stage("Report") {
+        node('test-dynamic-slave') {
+            cleanWs()
+
+            sfScmInfo = checkout([$class: 'GitSCM',
+                branches: [[name: '*']],
+                doGenerateSubmoduleConfigurations: false,
+                extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'snowflake']],
+                submoduleCfg: [],
+                userRemoteConfigs: [[credentialsId: 'a0395839-84c7-4ceb-90e2-bcf66b2d6885', url: 'ssh://bitbucket-internal.int.snowflakecomputing.com:7999/opfdb/fdb_snowflake.git']]
+                ])
+            println("$sfScmInfo")
+
+            buildScmInfo = checkout([
+                $class: 'GitSCM',
+                branches: scm.branches,
+                doGenerateSubmoduleConfigurations: scm.doGenerateSubmoduleConfigurations,
+                extensions: scm.extensions,
+                userRemoteConfigs: scm.userRemoteConfigs,
+                extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'snowflake/jenkins/foundationdb']]
+                ])
+            println("$buildScmInfo")
+
+            sh """
+                |export GIT_SPECIFIER=${buildScmInfo.GIT_COMMIT}
+                |snowflake/jenkins/foundationdb/tests/jenkins/pr_report.sh
+              """.stripMargin()
+            archiveArtifacts artifacts: '**/fdb6-report-*.txt',
+                optional: true,
+                onlyIfSuccessful: false
+        }
+    }
 }
 stage("Report") {
     node('test-dynamic-slave') {
