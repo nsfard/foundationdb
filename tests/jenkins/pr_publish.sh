@@ -1,4 +1,6 @@
-#!/usr/bin/env bash -e
+#!/usr/bin/env bash
+
+set -e
 
 # Publish a file to an s3 bucket and rebuild the index.html
 
