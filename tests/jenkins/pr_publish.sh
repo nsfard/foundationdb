@@ -30,3 +30,6 @@ cat >> $INDEX<<EOF
 EOF
 
 aws s3 cp --only-show-errors $INDEX $BUCKETPATH/index.html
+echo "REPORT available at http://sfc-fdb-build.s3-website-us-west-2.amazonaws.com/fdb-results/$FILENAME"
+echo ""
+echo "REPORT list at http://sfc-fdb-build.s3-website-us-west-2.amazonaws.com/fdb-results/index.html"
