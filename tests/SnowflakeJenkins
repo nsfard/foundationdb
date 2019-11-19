@@ -8,7 +8,7 @@ stage("Build") {
             doGenerateSubmoduleConfigurations: false,
             extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'snowflake']],
             submoduleCfg: [],
-            userRemoteConfigs: [[credentialsId: 'a0395839-84c7-4ceb-90e2-bcf66b2d6885', url: 'ssh://bitbucket-internal.int.snowflakecomputing.com:7999/opfdb/fdb_snowflake.git']]
+            userRemoteConfigs: [[credentialsId: 'b4f59663-ae0a-4384-9fdc-c7f2fe1c4fca', url: 'https://github.com/snowflakedb/fdb_snowflake.git']]
             ])
         println("$sfScmInfo")
 
@@ -89,7 +89,7 @@ def makeTestStep(iteration) {
                 doGenerateSubmoduleConfigurations: false,
                 extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'snowflake']],
                 submoduleCfg: [],
-                userRemoteConfigs: [[credentialsId: 'a0395839-84c7-4ceb-90e2-bcf66b2d6885', url: 'ssh://bitbucket-internal.int.snowflakecomputing.com:7999/opfdb/fdb_snowflake.git']]
+                userRemoteConfigs: [[credentialsId: 'b4f59663-ae0a-4384-9fdc-c7f2fe1c4fca', url: 'https://github.com/snowflakedb/fdb_snowflake.git']]
                 ])
             println("$sfScmInfo")
 
@@ -138,7 +138,7 @@ if (!cancelled) {
                 doGenerateSubmoduleConfigurations: false,
                 extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'snowflake']],
                 submoduleCfg: [],
-                userRemoteConfigs: [[credentialsId: 'a0395839-84c7-4ceb-90e2-bcf66b2d6885', url: 'ssh://bitbucket-internal.int.snowflakecomputing.com:7999/opfdb/fdb_snowflake.git']]
+                userRemoteConfigs: [[credentialsId: 'b4f59663-ae0a-4384-9fdc-c7f2fe1c4fca', url: 'https://github.com/snowflakedb/fdb_snowflake.git']]
                 ])
             println("$sfScmInfo")
 
